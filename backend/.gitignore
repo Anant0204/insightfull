@@ -1,0 +1,17 @@
+node_modules/
+.env
+dist/
+prisma/db.sqlite
+prisma/migrations/
+*.log
+*.zip
+tmp/
+
+backups/
+*.sql
+public/uploads/screenshots/
+public/agent/*.exe
+!public/agent/EMS-Tracker-latest.exe
+public/agent/*.zip
+public/uploads/videos/
+

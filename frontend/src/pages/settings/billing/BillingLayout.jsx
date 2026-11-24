@@ -1,0 +1,131 @@
+import React from 'react';
+import { NavLink, Outlet, useNavigate, Navigate } from 'react-router-dom';
+import { useAuthStore } from '../../../store/authStore';
+import {
+    ChevronLeft,
+    CreditCard,
+    MessageSquare,
+} from 'lucide-react';
+import { useBillingStore } from '../../../store/billingStore';
+import { cn } from '../../../utils/cn';
+
+export function BillingLayout() {
+    const navigate = useNavigate();
+    const { role } = useAuthStore();
+    const rolePath = role ? `/${role.toLowerCase()}` : '/admin';
+    const handleBack = () => {
+        if (window.history.length > 1) {
+            navigate(-1);
+        } else {
+            navigate(`${rolePath}/settings`);
+        }
+    };
+    const { billingCycle, setBillingCycle, trialDaysLeft, subscriptionStatus } = useBillingStore();
+    const isTrial = subscriptionStatus === 'trial';
+
+    return (
+        <div className="min-h-screen bg-[#fcfdfe] dark:bg-slate-950 pb-20">
+            {/* Trial Banner */}
+            {isTrial && trialDaysLeft > 0 && (
+                <div className="w-full bg-amber-50 dark:bg-amber-900/20 border-b border-amber-100 dark:border-amber-800/30 py-3 px-6 flex items-center justify-center gap-3 animate-in fade-in duration-500">
+                    <MessageSquare size={16} className="text-amber-500 shrink-0" />
+                    <p className="text-sm font-bold text-amber-800 dark:text-amber-300">
+                        <span>{trialDaysLeft} days left on your trial.</span>{' '}
+                        <NavLink
+                            to={`${rolePath}/settings/billing/plans`}
+                            className="font-black text-amber-600 dark:text-amber-400 hover:underline"
+                        >
+                            Choose plan
+                        </NavLink>
+                    </p>
+                </div>
+            )}
+
+            <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
+                {/* Header */}
+                <div className="flex items-center gap-4 pt-8 pb-6">
+                    <button
+                        onClick={handleBack}
+                        className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-all hover:scale-105 shadow-sm"
+                    >
+                        <ChevronLeft size={20} />
+                    </button>
+                    <div>
+                        <nav className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">
+                            <span
+                                className="hover:text-slate-600 dark:hover:text-slate-300 transition-colors cursor-pointer"
+                                onClick={() => navigate(`${rolePath}/settings`)}
+                            >
+                                Settings
+                            </span>
+                            <span>/</span>
+                            <span className="text-primary-600">Billing</span>
+                        </nav>
+                        <div className="flex items-center gap-3">
+                            {/* <div className="h-9 w-9 rounded-xl bg-[#30382B] dark:bg-[#B9955B] text-white flex items-center justify-center text-white shadow-lg shadow-warm-xs dark:shadow-none">
+                                <CreditCard size={18} />
+                            </div> */}
+                            <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
+                                Billing
+                            </h1>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Tabs + Billing Toggle */}
+                <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 mb-8">
+                    {/* Tabs */}
+                    <div className="flex items-center gap-1">
+                        {[
+                            { label: 'Plans', to: `${rolePath}/settings/billing/plans` },
+                            { label: 'Add-ons', to: `${rolePath}/settings/billing/add-ons` },
+                        ].map(({ label, to }) => (
+                            <NavLink
+                                key={to}
+                                to={to}
+                                className={({ isActive }) =>
+                                    cn(
+                                        'px-5 py-4 text-sm font-black transition-all relative',
+                                        isActive
+                                            ? 'text-primary-600 dark:text-primary-400'
+                                            : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
+                                    )
+                                }
+                            >
+                                {({ isActive }) => (
+                                    <>
+                                        {label}
+                                        {isActive && (
+                                            <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#30382B] hover:bg-[#3C4536] dark:bg-[#B9955B] dark:hover:bg-[#A17D45] text-white shadow-warm-sm rounded-full animate-in fade-in duration-200" />
+                                        )}
+                                    </>
+                                )}
+                            </NavLink>
+                        ))}
+                    </div>
+
+                    {/* Billing Toggle (only on Plans tab) */}
+                    <div className="flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-1 shadow-sm">
+                        {['monthly', 'annual'].map((cycle) => (
+                            <button
+                                key={cycle}
+                                onClick={() => setBillingCycle(cycle)}
+                                className={cn(
+                                    'px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all duration-200',
+                                    billingCycle === cycle
+                                        ? 'bg-[#30382B] hover:bg-[#3C4536] dark:bg-[#B9955B] dark:hover:bg-[#A17D45] text-white shadow-warm-sm text-white shadow-md shadow-warm-xs dark:shadow-none'
+                                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+                                )}
+                            >
+                                {cycle === 'monthly' ? 'Monthly Billing' : 'Annual Billing'}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Tab Content */}
+                <Outlet />
+            </div>
+        </div>
+    );
+}

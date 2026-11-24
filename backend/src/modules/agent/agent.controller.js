@@ -272,8 +272,19 @@ const logActivity = async (req, res) => {
 
         // Token verification
         if (!authHeader) return errorResponse(res, 'Unauthorized', 401);
-        const decoded = Buffer.from(authHeader, 'base64').toString('ascii');
-        if (!decoded.includes(employeeId) || !decoded.includes('INSIGHTFUL')) {
+        try {
+            const tokenBuffer = Buffer.from(authHeader, 'base64');
+            const parts = tokenBuffer.toString('utf8').split(':');
+            const isValidAgentToken =
+                tokenBuffer.toString('base64') === authHeader &&
+                parts.length === 3 &&
+                parts[0] === employeeId &&
+                parts[1] === agent.deviceId &&
+                parts[2] === 'INSIGHTFUL';
+            if (!isValidAgentToken) {
+                return errorResponse(res, 'Unauthorized', 401);
+            }
+        } catch (e) {
             return errorResponse(res, 'Unauthorized', 401);
         }
 
@@ -421,14 +432,10 @@ const checkDevice = async (req, res) => {
             return errorResponse(res, 'Device not registered', 404);
         }
 
-        const agentToken = Buffer.from(`${agent.employeeId}:${agent.deviceId}:INSIGHTFUL`).toString('base64');
-
+        // Never expose employee PII or agent tokens from this unauthenticated endpoint
         return successResponse(res, {
-            employeeId: agent.employeeId,
-            employeeName: agent.employee.fullName,
-            employeeEmail: agent.employee.email,
-            status: agent.status,
-            token: agentToken
+            registered: true,
+            status: agent.status
         }, 'Device recognized');
     } catch (error) {
         console.error('Check device error:', error);

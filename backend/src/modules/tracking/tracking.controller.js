@@ -1,12 +1,19 @@
 const trackingService = require('./tracking.service');
 const { successResponse, errorResponse } = require('../../utils/response');
+const { canAccessEmployeeData } = require('../../utils/accessControl');
+const { signRecordList } = require('../../utils/fileSignature');
 
 const upload = async (req, res) => {
     try {
         const { employeeId, screenshotUrl, videoUrl, activityStatus, location } = req.body;
-        
+
+        const targetEmployeeId = employeeId || req.user?.employeeId;
+        if (!(await canAccessEmployeeData(req, targetEmployeeId))) {
+            return errorResponse(res, 'Forbidden', 403);
+        }
+
         const tracking = await trackingService.saveTracking({
-            employeeId: employeeId || req.user?.employeeId,
+            employeeId: targetEmployeeId,
             screenshotUrl,
             videoUrl,
             activityStatus,
@@ -24,9 +31,13 @@ const getHistory = async (req, res) => {
     try {
         const { employeeId } = req.params;
         const { startDate, endDate } = req.query;
-        
+
+        if (!(await canAccessEmployeeData(req, employeeId))) {
+            return errorResponse(res, 'Forbidden', 403);
+        }
+
         const history = await trackingService.getTrackingHistory(employeeId, { startDate, endDate });
-        return successResponse(res, history, 'Tracking history retrieved');
+        return successResponse(res, signRecordList(history), 'Tracking history retrieved');
     } catch (error) {
         console.error('Get tracking history error:', error);
         return errorResponse(res, error.message || 'Failed to get history', 500);

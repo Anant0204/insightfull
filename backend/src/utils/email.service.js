@@ -150,4 +150,8 @@ async function sendIdleAlertEmail({ employee, manager, idleDuration, taskId, tim
     });
 }
 
+if (!createTransport()) {
+    console.warn('[EmailService] SMTP is not configured — emails will be SIMULATED, not delivered. Set SMTP_HOST, SMTP_USER and SMTP_PASS to enable real delivery.');
+}
+
 module.exports = { sendMail, sendIdleAlertEmail };

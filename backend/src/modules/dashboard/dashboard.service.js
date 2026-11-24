@@ -36,7 +36,12 @@ async function calculateMetrics(organizationId, employeeId = null, teamId = null
         whereClause.employee = { ...(whereClause.employee || {}), role };
     }
 
-    const logs = await prisma.activityLog.findMany({ where: whereClause });
+    // DB-level aggregation instead of loading every log row into memory
+    const groupedLogs = await prisma.activityLog.groupBy({
+        by: ['activityType', 'productivity'],
+        where: whereClause,
+        _sum: { duration: true }
+    });
 
     let activeTime = 0;
     let idleTime = 0;
@@ -44,13 +49,14 @@ async function calculateMetrics(organizationId, employeeId = null, teamId = null
     let unproductiveTime = 0;
     let neutralTime = 0;
 
-    logs.forEach(log => {
-        if (log.activityType === 'ACTIVE') activeTime += log.duration;
-        if (log.activityType === 'IDLE') idleTime += log.duration;
+    groupedLogs.forEach(g => {
+        const duration = g._sum.duration || 0;
+        if (g.activityType === 'ACTIVE') activeTime += duration;
+        if (g.activityType === 'IDLE') idleTime += duration;
 
-        if (log.productivity === 'PRODUCTIVE') productiveTime += log.duration;
-        else if (log.productivity === 'UNPRODUCTIVE') unproductiveTime += log.duration;
-        else if (log.productivity === 'NEUTRAL') neutralTime += log.duration;
+        if (g.productivity === 'PRODUCTIVE') productiveTime += duration;
+        else if (g.productivity === 'UNPRODUCTIVE') unproductiveTime += duration;
+        else if (g.productivity === 'NEUTRAL') neutralTime += duration;
     });
 
     const manualWhere = { organizationId, startTime: dateFilter };
@@ -59,8 +65,8 @@ async function calculateMetrics(organizationId, employeeId = null, teamId = null
     if (role) {
         manualWhere.employee = { ...(manualWhere.employee || {}), role };
     }
-    const manualLogs = await prisma.manualTime.findMany({ where: manualWhere });
-    const manualTime = manualLogs.reduce((acc, log) => acc + log.duration, 0);
+    const manualAgg = await prisma.manualTime.aggregate({ where: manualWhere, _sum: { duration: true } });
+    const manualTime = manualAgg._sum.duration || 0;
     // manualTime is typically productive or neutral. We'll count it towards productive
     productiveTime += manualTime;
 

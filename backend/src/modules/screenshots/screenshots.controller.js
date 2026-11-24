@@ -3,6 +3,8 @@ const { successResponse, errorResponse } = require('../../utils/response');
 const { getOrganizationId } = require('../../utils/orgId');
 const prisma = require('../../config/db');
 const { uploadImageBuffer } = require('../../utils/imageStorage');
+const { canAccessEmployeeData } = require('../../utils/accessControl');
+const { signRecordUrls, signRecordList } = require('../../utils/fileSignature');
 
 const screenshotsController = {
     // POST /api/screenshots
@@ -82,7 +84,7 @@ const screenshotsController = {
                 console.error('[ScreenshotsController] Socket broadcast error:', socketErr.message);
             }
 
-            return successResponse(res, screenshot, 'Screenshot captured successfully');
+            return successResponse(res, signRecordUrls(screenshot), 'Screenshot captured successfully');
         } catch (error) {
             console.error('Error creating screenshot:', error);
             return errorResponse(res, error.message);
@@ -131,7 +133,7 @@ const screenshotsController = {
 
             const screenshots = await screenshotsService.getScreenshots(where, parsedLimit, parsedOffset);
 
-            return successResponse(res, screenshots, 'Screenshots fetched successfully');
+            return successResponse(res, signRecordList(screenshots), 'Screenshots fetched successfully');
         } catch (error) {
             console.error('Error fetching screenshots:', error);
             return errorResponse(res, error.message);
@@ -145,6 +147,10 @@ const screenshotsController = {
             const { date, limit = 50, offset = 0 } = req.query;
             const organizationId = await getOrganizationId(req);
             const { role } = req.user;
+
+            if (!(await canAccessEmployeeData(req, employeeId))) {
+                return errorResponse(res, 'Forbidden', 403);
+            }
 
             let where = { employeeId, organizationId };
 
@@ -160,7 +166,7 @@ const screenshotsController = {
             const parsedOffset = parseInt(offset, 10) || 0;
 
             const screenshots = await screenshotsService.getScreenshots(where, parsedLimit, parsedOffset);
-            return successResponse(res, screenshots, 'Employee screenshots fetched');
+            return successResponse(res, signRecordList(screenshots), 'Employee screenshots fetched');
         } catch (error) {
             return errorResponse(res, error.message);
         }
@@ -260,8 +266,12 @@ const screenshotsController = {
                 return errorResponse(res, 'Date is required for playback', 400);
             }
 
+            if (!(await canAccessEmployeeData(req, employeeId))) {
+                return errorResponse(res, 'Forbidden', 403);
+            }
+
             const screenshots = await screenshotsService.getEmployeePlaybackScreenshots(employeeId, date);
-            return successResponse(res, screenshots, 'Playback screenshots fetched successfully');
+            return successResponse(res, signRecordList(screenshots), 'Playback screenshots fetched successfully');
         } catch (error) {
             return errorResponse(res, error.message);
         }

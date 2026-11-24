@@ -15,7 +15,8 @@ const errorMiddleware = (err, req, res, next) => {
 
     // Zod validation error
     if (err.name === 'ZodError') {
-        const message = err.errors.map(e => {
+        const issues = err.issues || err.errors || [];
+        const message = issues.map(e => {
             const path = e.path.join(': ');
             if (e.code === 'invalid_string' && e.validation === 'email') {
                 return `Invalid email format`;
@@ -34,9 +35,11 @@ const errorMiddleware = (err, req, res, next) => {
         return errorResponse(res, 'Your token has expired! Please log in again.', 401);
     }
 
-    // Default error
+    // Default error — never leak internals to the client
     const statusCode = err.statusCode || 500;
-    const message = err.message || 'Internal Server Error';
+    const message = statusCode >= 500
+        ? 'Internal server error. Please try again later.'
+        : (err.message || 'Request failed');
 
     errorResponse(res, message, statusCode);
 };

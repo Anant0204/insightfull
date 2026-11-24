@@ -1,66 +1,75 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { DashboardLayout } from './layouts/DashboardLayout';
-import { Dashboard } from './pages/Dashboard';
-import { TimeAndAttendance } from './pages/TimeAndAttendance';
-import { ActivityMonitoring } from './pages/ActivityMonitoring';
-import { ActivitiesTimeline } from './pages/ActivitiesTimeline';
-import { ScreenshotMonitoring } from './pages/ScreenshotMonitoring';
-import { EmployeeManagement } from './pages/EmployeeManagement';
-import { EmployeeProfile } from './pages/EmployeeProfile';
-import { Settings } from './pages/Settings';
-// Attendance is now part of TimeAndAttendance
-import { LocationTracking } from './pages/LocationTracking';
-import { TasksProjects } from './pages/TasksProjects';
-import { Reports } from './pages/Reports';
-import { WorkType } from './pages/reports/WorkType';
-import { ScheduleAdherence } from './pages/reports/ScheduleAdherence';
-import { WorkloadDistribution } from './pages/reports/WorkloadDistribution';
-import { AppsWebsites } from './pages/reports/AppsWebsites';
-import { LocationInsights } from './pages/reports/LocationInsights';
-import { Payroll } from './pages/Payroll';
-import { Alerts } from './pages/Alerts';
-import { Compliance } from './pages/Compliance';
-import { Notifications } from './pages/Notifications';
-import { RealTimeInsights } from './pages/RealTimeInsights';
-import { Teams } from './pages/Teams';
-import { Projects } from './pages/Projects';
-import { AgentManagement } from './pages/AgentManagement';
-import { SetupPassword } from './pages/SetupPassword';
-import { SetupAgent } from './pages/SetupAgent';
 import { Login } from './pages/Login';
-import { WorkloadDistributionSettings } from './pages/settings/reports/WorkloadDistributionSettings';
-import { LocationInsightsSettings } from './pages/settings/reports/LocationInsightsSettings';
-import { AlertsLayout } from './pages/settings/alerts/AlertsLayout';
-import { AttendanceAlerts } from './pages/settings/alerts/AttendanceAlerts';
-import { SecurityAlerts } from './pages/settings/alerts/SecurityAlerts';
-import { ShiftScheduling } from './pages/settings/alerts/ShiftScheduling';
-import { OtherAlerts } from './pages/settings/alerts/OtherAlerts';
-import { AuditLogs } from './pages/settings/AuditLogs';
-import { EmailReports } from './pages/settings/EmailReports';
-import { BillingLayout } from './pages/settings/billing/BillingLayout';
-import { ManualTime } from './pages/settings/ManualTime';
-import { Organization } from './pages/settings/Organization';
-import { PersonalSettings } from './pages/settings/PersonalSettings';
-import { Privacy } from './pages/settings/Privacy';
-import { PrivacyOverview } from './components/privacy/PrivacyOverview';
-import { PrivacyCompliance } from './components/privacy/PrivacyCompliance';
-import { ProductivityApps } from './pages/settings/ProductivityApps';
-import { SecurityLanding } from './pages/settings/SecurityLanding';
-import { SamlWizard } from './pages/settings/SamlWizard';
-import { TrackingSettings } from './pages/settings/TrackingSettings';
-import { AdvancedTrackingSettings } from './pages/settings/AdvancedTrackingSettings';
-import { ManageOrgGroups } from './pages/settings/ManageOrgGroups';
-import { Utilization } from './pages/settings/Utilization';
-import { Plans } from './pages/settings/billing/Plans';
-import { AddOns } from './pages/settings/billing/AddOns';
-import ProcessMining from './pages/reports/ProcessMining';
-import ComplianceReadiness from './pages/compliance/ComplianceReadiness';
 import { ProtectedRoute, PublicRoute, RoleRoute } from './components/ProtectedRoute';
-import { ManageUsers } from './pages/settings/ManageUsers';
 import { RealTimeProvider } from './hooks/RealTimeContext';
 import { WorkSessionRequired } from './components/employee/WorkSessionRequired';
+import { lazy, Suspense, useEffect } from 'react';
 
-import { useEffect } from 'react';
+// Page-level code splitting: each route loads its own chunk on demand
+const lazyNamed = (loader, name) => lazy(() => loader().then(m => ({ default: m[name] })));
+
+const Dashboard = lazyNamed(() => import('./pages/Dashboard'), 'Dashboard');
+const TimeAndAttendance = lazyNamed(() => import('./pages/TimeAndAttendance'), 'TimeAndAttendance');
+const ActivityMonitoring = lazyNamed(() => import('./pages/ActivityMonitoring'), 'ActivityMonitoring');
+const ActivitiesTimeline = lazyNamed(() => import('./pages/ActivitiesTimeline'), 'ActivitiesTimeline');
+const ScreenshotMonitoring = lazyNamed(() => import('./pages/ScreenshotMonitoring'), 'ScreenshotMonitoring');
+const EmployeeManagement = lazyNamed(() => import('./pages/EmployeeManagement'), 'EmployeeManagement');
+const EmployeeProfile = lazyNamed(() => import('./pages/EmployeeProfile'), 'EmployeeProfile');
+const Settings = lazyNamed(() => import('./pages/Settings'), 'Settings');
+const LocationTracking = lazyNamed(() => import('./pages/LocationTracking'), 'LocationTracking');
+const TasksProjects = lazyNamed(() => import('./pages/TasksProjects'), 'TasksProjects');
+const Reports = lazyNamed(() => import('./pages/Reports'), 'Reports');
+const WorkType = lazyNamed(() => import('./pages/reports/WorkType'), 'WorkType');
+const ScheduleAdherence = lazyNamed(() => import('./pages/reports/ScheduleAdherence'), 'ScheduleAdherence');
+const WorkloadDistribution = lazyNamed(() => import('./pages/reports/WorkloadDistribution'), 'WorkloadDistribution');
+const AppsWebsites = lazyNamed(() => import('./pages/reports/AppsWebsites'), 'AppsWebsites');
+const LocationInsights = lazyNamed(() => import('./pages/reports/LocationInsights'), 'LocationInsights');
+const Payroll = lazyNamed(() => import('./pages/Payroll'), 'Payroll');
+const Alerts = lazyNamed(() => import('./pages/Alerts'), 'Alerts');
+const Compliance = lazyNamed(() => import('./pages/Compliance'), 'Compliance');
+const Notifications = lazyNamed(() => import('./pages/Notifications'), 'Notifications');
+const RealTimeInsights = lazyNamed(() => import('./pages/RealTimeInsights'), 'RealTimeInsights');
+const Teams = lazyNamed(() => import('./pages/Teams'), 'Teams');
+const Projects = lazyNamed(() => import('./pages/Projects'), 'Projects');
+const AgentManagement = lazyNamed(() => import('./pages/AgentManagement'), 'AgentManagement');
+const SetupPassword = lazyNamed(() => import('./pages/SetupPassword'), 'SetupPassword');
+const SetupAgent = lazyNamed(() => import('./pages/SetupAgent'), 'SetupAgent');
+const WorkloadDistributionSettings = lazyNamed(() => import('./pages/settings/reports/WorkloadDistributionSettings'), 'WorkloadDistributionSettings');
+const LocationInsightsSettings = lazyNamed(() => import('./pages/settings/reports/LocationInsightsSettings'), 'LocationInsightsSettings');
+const AlertsLayout = lazyNamed(() => import('./pages/settings/alerts/AlertsLayout'), 'AlertsLayout');
+const AttendanceAlerts = lazyNamed(() => import('./pages/settings/alerts/AttendanceAlerts'), 'AttendanceAlerts');
+const SecurityAlerts = lazyNamed(() => import('./pages/settings/alerts/SecurityAlerts'), 'SecurityAlerts');
+const ShiftScheduling = lazyNamed(() => import('./pages/settings/alerts/ShiftScheduling'), 'ShiftScheduling');
+const OtherAlerts = lazyNamed(() => import('./pages/settings/alerts/OtherAlerts'), 'OtherAlerts');
+const AuditLogs = lazyNamed(() => import('./pages/settings/AuditLogs'), 'AuditLogs');
+const EmailReports = lazyNamed(() => import('./pages/settings/EmailReports'), 'EmailReports');
+const BillingLayout = lazyNamed(() => import('./pages/settings/billing/BillingLayout'), 'BillingLayout');
+const ManualTime = lazyNamed(() => import('./pages/settings/ManualTime'), 'ManualTime');
+const Organization = lazyNamed(() => import('./pages/settings/Organization'), 'Organization');
+const PersonalSettings = lazyNamed(() => import('./pages/settings/PersonalSettings'), 'PersonalSettings');
+const Privacy = lazyNamed(() => import('./pages/settings/Privacy'), 'Privacy');
+const PrivacyOverview = lazyNamed(() => import('./components/privacy/PrivacyOverview'), 'PrivacyOverview');
+const PrivacyCompliance = lazyNamed(() => import('./components/privacy/PrivacyCompliance'), 'PrivacyCompliance');
+const ProductivityApps = lazyNamed(() => import('./pages/settings/ProductivityApps'), 'ProductivityApps');
+const SecurityLanding = lazyNamed(() => import('./pages/settings/SecurityLanding'), 'SecurityLanding');
+const SamlWizard = lazyNamed(() => import('./pages/settings/SamlWizard'), 'SamlWizard');
+const TrackingSettings = lazyNamed(() => import('./pages/settings/TrackingSettings'), 'TrackingSettings');
+const AdvancedTrackingSettings = lazyNamed(() => import('./pages/settings/AdvancedTrackingSettings'), 'AdvancedTrackingSettings');
+const ManageOrgGroups = lazyNamed(() => import('./pages/settings/ManageOrgGroups'), 'ManageOrgGroups');
+const Utilization = lazyNamed(() => import('./pages/settings/Utilization'), 'Utilization');
+const Plans = lazyNamed(() => import('./pages/settings/billing/Plans'), 'Plans');
+const AddOns = lazyNamed(() => import('./pages/settings/billing/AddOns'), 'AddOns');
+const ManageUsers = lazyNamed(() => import('./pages/settings/ManageUsers'), 'ManageUsers');
+const ProcessMining = lazy(() => import('./pages/reports/ProcessMining'));
+const ComplianceReadiness = lazy(() => import('./pages/compliance/ComplianceReadiness'));
+
+const PageLoader = (
+    <div className="flex items-center justify-center min-h-[40vh] text-slate-400 text-sm font-medium">
+        Loading…
+    </div>
+);
+
 import { useAuthStore } from './store/authStore';
 
 import authService from './services/authService';
@@ -110,6 +119,7 @@ function App() {
         <ToastProvider>
             <RealTimeProvider>
                 <Router future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+                    <Suspense fallback={PageLoader}>
                     <Routes>
                         {/* Public Routes */}
                         <Route path="/login" element={<Login />} />
@@ -228,6 +238,7 @@ function App() {
                             </ProtectedRoute>
                         } />
                     </Routes>
+                    </Suspense>
                 </Router>
             </RealTimeProvider>
         </ToastProvider>

@@ -76,9 +76,20 @@ try {
 }
 
 // ─── Desktop Agent Configuration & Runtime State ─────────────────────────────
+function isValidServerUrl(url) {
+    try {
+        const parsed = new URL(url);
+        return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+    } catch (e) {
+        return false;
+    }
+}
+
 function resolveServerUrl() {
     if (process.env.API_URL && process.env.API_URL.trim()) {
-        return process.env.API_URL.trim().replace(/\/api\/?$/, '').replace(/\/$/, '');
+        const fromEnv = process.env.API_URL.trim().replace(/\/api\/?$/, '').replace(/\/$/, '');
+        if (isValidServerUrl(fromEnv)) return fromEnv;
+        console.warn(`[AgentSetup] Ignoring invalid API_URL: ${process.env.API_URL}`);
     }
     try {
         const candidatePaths = [
@@ -90,12 +101,15 @@ function resolveServerUrl() {
             if (fs.existsSync(p)) {
                 const raw = JSON.parse(fs.readFileSync(p, 'utf-8'));
                 if (raw && raw.SERVER_URL) {
-                    return raw.SERVER_URL.trim().replace(/\/api\/?$/, '').replace(/\/$/, '');
+                    const fromConfig = raw.SERVER_URL.trim().replace(/\/api\/?$/, '').replace(/\/$/, '');
+                    if (isValidServerUrl(fromConfig)) return fromConfig;
+                    console.warn(`[AgentSetup] Ignoring invalid SERVER_URL in ${p}`);
                 }
             }
         }
     } catch (e) {}
-    return 'https://insight-pool-production.up.railway.app';
+    // Safe default: local backend. Set API_URL or server-config.json for staging/production.
+    return 'http://localhost:5000';
 }
 
 const API_URL = resolveServerUrl();

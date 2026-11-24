@@ -33,8 +33,26 @@ app.use(express.urlencoded({ limit: '10mb', extended: true }));
 // Routes
 app.use('/api', routes);
 
-// Serve Static files for uploads
-app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')));
+// Serve uploaded files (screenshots/videos) only with a valid short-lived signature.
+// Private monitoring media must never be publicly accessible.
+const { verifyFileSignature } = require('./utils/fileSignature');
+const UPLOADS_ROOT = path.join(__dirname, '../public/uploads');
+app.use('/uploads', (req, res) => {
+    const canonicalPath = `/uploads${decodeURIComponent(req.path)}`;
+    if (!verifyFileSignature(canonicalPath, req.query.exp, req.query.sig)) {
+        return res.status(403).json({ success: false, message: 'Forbidden' });
+    }
+    const safeRelative = path.normalize(req.path).replace(/^([/\\])+/, '');
+    const absolutePath = path.join(UPLOADS_ROOT, safeRelative);
+    if (!absolutePath.startsWith(UPLOADS_ROOT)) {
+        return res.status(403).json({ success: false, message: 'Forbidden' });
+    }
+    return res.sendFile(absolutePath, (err) => {
+        if (err && !res.headersSent) {
+            res.status(err.statusCode || 404).json({ success: false, message: 'File not found' });
+        }
+    });
+});
 app.use('/agent', express.static(path.join(__dirname, '../public/agent')));
 
 // Redirect friendly agent setup URLs directly to agent installer download

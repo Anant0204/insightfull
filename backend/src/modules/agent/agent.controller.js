@@ -8,6 +8,7 @@ const { getIO, updateSessionStatus } = require('../../socket/server');
 const { getOrganizationId } = require('../../utils/orgId');
 const { generateAgentToken, verifyAgentToken } = require('../../utils/agentToken');
 const { verifyToken } = require('../../utils/jwt');
+const { canAccessEmployeeData } = require('../../utils/accessControl');
 
 const invitationService = require('../auth/invitation.service');
 const { sendIdleAlertEmail } = require('../../utils/email.service');
@@ -68,27 +69,29 @@ const register = async (req, res) => {
             const existingEmployee = invitedEmployee;
 
             console.log(`Creating user record for employee: ${existingEmployee.fullName}`);
-            // Create User linked to the employee
+            // Create User + activate Employee atomically — no partial records on failure
             const hashedPassword = await bcrypt.hash(password, 10);
-            user = await prisma.user.create({
-                data: {
-                    email,
-                    password: hashedPassword,
-                    role: 'EMPLOYEE',
-                    employeeId: existingEmployee.id
-                },
-                include: { employee: true }
-            });
+            const [createdUser] = await prisma.$transaction([
+                prisma.user.create({
+                    data: {
+                        email,
+                        password: hashedPassword,
+                        role: 'EMPLOYEE',
+                        employeeId: existingEmployee.id
+                    },
+                    include: { employee: true }
+                }),
+                prisma.employee.update({
+                    where: { id: existingEmployee.id },
+                    data: {
+                        fullName: name || existingEmployee.fullName,
+                        ...(existingEmployee.status === 'INVITED' ? { status: 'ACTIVE' } : {}),
+                    },
+                })
+            ]);
+            user = createdUser;
 
             targetEmployeeId = existingEmployee.id;
-
-            await prisma.employee.update({
-                where: { id: existingEmployee.id },
-                data: {
-                    fullName: name || existingEmployee.fullName,
-                    ...(existingEmployee.status === 'INVITED' ? { status: 'ACTIVE' } : {}),
-                },
-            });
         } else {
             // User exists, verify password
             const isPasswordValid = await bcrypt.compare(password, user.password);
@@ -108,21 +111,32 @@ const register = async (req, res) => {
                 }
                 if (!existingEmployee) {
                     const org = await prisma.organization.findFirst();
-                    existingEmployee = await prisma.employee.create({
-                        data: {
-                            fullName: name || email.split('@')[0],
-                            email,
-                            organizationId: org ? org.id : 1,
-                            role: 'EMPLOYEE',
-                            status: 'ACTIVE'
-                        }
+                    if (!org) {
+                        return errorResponse(res, 'No organization found in system. Please setup organization first.', 400);
+                    }
+                    // Create Employee + link User atomically — no partial records on failure
+                    existingEmployee = await prisma.$transaction(async (tx) => {
+                        const emp = await tx.employee.create({
+                            data: {
+                                fullName: name || email.split('@')[0],
+                                email,
+                                organizationId: org.id,
+                                role: 'EMPLOYEE',
+                                status: 'ACTIVE'
+                            }
+                        });
+                        await tx.user.update({
+                            where: { id: user.id },
+                            data: { employeeId: emp.id }
+                        });
+                        return emp;
+                    });
+                } else {
+                    await prisma.user.update({
+                        where: { id: user.id },
+                        data: { employeeId: existingEmployee.id }
                     });
                 }
-
-                await prisma.user.update({
-                    where: { id: user.id },
-                    data: { employeeId: existingEmployee.id }
-                });
                 targetEmployeeId = existingEmployee.id;
             } else {
                 targetEmployeeId = user.employee.id;
@@ -278,9 +292,10 @@ const logActivity = async (req, res) => {
 
             // 1. Notify about new screenshot (with taskId & violation metadata)
             if (logResult?.screenshotSaved && logResult?.finalScreenshotUrl) {
+                const { signLocalUrl } = require('../../utils/fileSignature');
                 io.to(room).emit('screenshot:new', {
                     employeeId,
-                    imageUrl: logResult.finalScreenshotUrl,
+                    imageUrl: signLocalUrl(logResult.finalScreenshotUrl),
                     capturedAt: data.timestamp || new Date(),
                     productivity: data.violation ? 'UNPRODUCTIVE' : (logResult?.productivity || 'NEUTRAL'),
                     employeeName: agent.employee.fullName,
@@ -380,6 +395,9 @@ const downloadAgent = async (req, res) => {
 const getStatus = async (req, res) => {
     try {
         const employeeId = req.params.employeeId || req.user.employeeId;
+        if (!(await canAccessEmployeeData(req, employeeId))) {
+            return errorResponse(res, 'Forbidden', 403);
+        }
         const status = await agentService.getAgentStatus(employeeId);
 
         if (status.status === 'missing') {
@@ -950,6 +968,9 @@ const handleIdleResponse = async (req, res) => {
 const getIdleSessions = async (req, res) => {
     try {
         const { employeeId } = req.params;
+        if (!(await canAccessEmployeeData(req, employeeId))) {
+            return errorResponse(res, 'Forbidden', 403);
+        }
         const sessions = await prisma.idleSession.findMany({
             where: { employeeId },
             orderBy: { createdAt: 'desc' },
@@ -981,6 +1002,9 @@ const getIdleSessions = async (req, res) => {
 const getActivitySummary = async (req, res) => {
     try {
         const { employeeId } = req.params;
+        if (!(await canAccessEmployeeData(req, employeeId))) {
+            return errorResponse(res, 'Forbidden', 403);
+        }
         const todayStart = new Date();
         todayStart.setHours(0, 0, 0, 0);
 

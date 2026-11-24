@@ -1,0 +1,3386 @@
+diff --git a/agent/main.js b/agent/main.js
+index 6f35ad2..473c723 100644
+--- a/agent/main.js
++++ b/agent/main.js
+@@ -76,9 +76,20 @@ try {
+ }
+ 
+ // ─── Desktop Agent Configuration & Runtime State ─────────────────────────────
++function isValidServerUrl(url) {
++    try {
++        const parsed = new URL(url);
++        return parsed.protocol === 'http:' || parsed.protocol === 'https:';
++    } catch (e) {
++        return false;
++    }
++}
++
+ function resolveServerUrl() {
+     if (process.env.API_URL && process.env.API_URL.trim()) {
+-        return process.env.API_URL.trim().replace(/\/api\/?$/, '').replace(/\/$/, '');
++        const fromEnv = process.env.API_URL.trim().replace(/\/api\/?$/, '').replace(/\/$/, '');
++        if (isValidServerUrl(fromEnv)) return fromEnv;
++        console.warn(`[AgentSetup] Ignoring invalid API_URL: ${process.env.API_URL}`);
+     }
+     try {
+         const candidatePaths = [
+@@ -90,12 +101,15 @@ function resolveServerUrl() {
+             if (fs.existsSync(p)) {
+                 const raw = JSON.parse(fs.readFileSync(p, 'utf-8'));
+                 if (raw && raw.SERVER_URL) {
+-                    return raw.SERVER_URL.trim().replace(/\/api\/?$/, '').replace(/\/$/, '');
++                    const fromConfig = raw.SERVER_URL.trim().replace(/\/api\/?$/, '').replace(/\/$/, '');
++                    if (isValidServerUrl(fromConfig)) return fromConfig;
++                    console.warn(`[AgentSetup] Ignoring invalid SERVER_URL in ${p}`);
+                 }
+             }
+         }
+     } catch (e) {}
+-    return 'https://insight-pool-production.up.railway.app';
++    // Safe default: local backend. Set API_URL or server-config.json for staging/production.
++    return 'http://localhost:5000';
+ }
+ 
+ const API_URL = resolveServerUrl();
+diff --git a/agent/server-config.json b/agent/server-config.json
+index acb1e4d..d920140 100644
+--- a/agent/server-config.json
++++ b/agent/server-config.json
+@@ -1,3 +1,3 @@
+ {
+-  "SERVER_URL": "https://insight-pool-production.up.railway.app"
+-}
+\ No newline at end of file
++  "SERVER_URL": "http://localhost:5000"
++}
+diff --git a/backend/.gitignore b/backend/.gitignore
+index 939cf48..10aaa03 100644
+--- a/backend/.gitignore
++++ b/backend/.gitignore
+@@ -2,7 +2,6 @@ node_modules/
+ .env
+ dist/
+ prisma/db.sqlite
+-prisma/migrations/
+ *.log
+ *.zip
+ tmp/
+diff --git a/backend/package-lock.json b/backend/package-lock.json
+index 46ddb4e..299e643 100644
+--- a/backend/package-lock.json
++++ b/backend/package-lock.json
+@@ -18,11 +18,11 @@
+         "jsonwebtoken": "^9.0.3",
+         "multer": "^2.1.1",
+         "node-cron": "^4.2.1",
+-        "nodemailer": "^8.0.2",
++        "nodemailer": "^10.6.1",
+         "pdfkit": "^0.20.2",
+-        "sharp": "^0.34.5",
++        "sharp": "^0.35.5",
+         "socket.io": "^4.8.3",
+-        "zod": "^3.23.8"
++        "zod": "^4.6.7"
+       },
+       "devDependencies": {
+         "nodemon": "^3.1.9",
+@@ -30,9 +30,9 @@
+       }
+     },
+     "node_modules/@emnapi/runtime": {
+-      "version": "1.9.1",
+-      "resolved": "https://registry.npmjs.org/@emnapi/runtime/-/runtime-1.9.1.tgz",
+-      "integrity": "sha512-VYi5+ZVLhpgK4hQ0TAjiQiZ6ol0oe4mBx7mVv7IflsiEp0OWoVsp/+f9Vc1hOhE0TtkORVrI1GvzyreqpgWtkA==",
++      "version": "1.11.3",
++      "resolved": "https://registry.npmjs.org/@emnapi/runtime/-/runtime-1.11.3.tgz",
++      "integrity": "sha512-Xz4Tpyki7XyrpbUK1jR1AhdAdaXyhhY4lZ3neLodmhpuWfy2PAQN5B46sAiU4liOXGLkHypn/qU+jvfWSCYYLA==",
+       "license": "MIT",
+       "optional": true,
+       "dependencies": {
+@@ -49,9 +49,9 @@
+       }
+     },
+     "node_modules/@img/sharp-darwin-arm64": {
+-      "version": "0.34.5",
+-      "resolved": "https://registry.npmjs.org/@img/sharp-darwin-arm64/-/sharp-darwin-arm64-0.34.5.tgz",
+-      "integrity": "sha512-imtQ3WMJXbMY4fxb/Ndp6HBTNVtWCUI0WdobyheGf5+ad6xX8VIDO8u2xE4qc/fr08CKG/7dDseFtn6M6g/r3w==",
++      "version": "0.35.5",
++      "resolved": "https://registry.npmjs.org/@img/sharp-darwin-arm64/-/sharp-darwin-arm64-0.35.5.tgz",
++      "integrity": "sha512-QRUlFQ0WxvdWyqqG/WtI3iupfD5rBzmCHXSdPsY91sAtVtTo7Q4cb6zOccZ3gqEqkr0f1As1ehLqmEpDsRf+lg==",
+       "cpu": [
+         "arm64"
+       ],
+@@ -61,19 +61,19 @@
+         "darwin"
+       ],
+       "engines": {
+-        "node": "^18.17.0 || ^20.3.0 || >=21.0.0"
++        "node": ">=20.9.0"
+       },
+       "funding": {
+         "url": "https://opencollective.com/libvips"
+       },
+       "optionalDependencies": {
+-        "@img/sharp-libvips-darwin-arm64": "1.2.4"
++        "@img/sharp-libvips-darwin-arm64": "1.3.4"
+       }
+     },
+     "node_modules/@img/sharp-darwin-x64": {
+-      "version": "0.34.5",
+-      "resolved": "https://registry.npmjs.org/@img/sharp-darwin-x64/-/sharp-darwin-x64-0.34.5.tgz",
+-      "integrity": "sha512-YNEFAF/4KQ/PeW0N+r+aVVsoIY0/qxxikF2SWdp+NRkmMB7y9LBZAVqQ4yhGCm/H3H270OSykqmQMKLBhBJDEw==",
++      "version": "0.35.5",
++      "resolved": "https://registry.npmjs.org/@img/sharp-darwin-x64/-/sharp-darwin-x64-0.35.5.tgz",
++      "integrity": "sha512-+BR255RhDlpygUpOc/Jdt1nT6DQ3XG/ERo5wbcdOf5Q320dKtPCKPLR1LJs9VGXRaMa8l1uUa0tkCNOXiAxZUw==",
+       "cpu": [
+         "x64"
+       ],
+@@ -83,19 +83,38 @@
+         "darwin"
+       ],
+       "engines": {
+-        "node": "^18.17.0 || ^20.3.0 || >=21.0.0"
++        "node": ">=20.9.0"
+       },
+       "funding": {
+         "url": "https://opencollective.com/libvips"
+       },
+       "optionalDependencies": {
+-        "@img/sharp-libvips-darwin-x64": "1.2.4"
++        "@img/sharp-libvips-darwin-x64": "1.3.4"
++      }
++    },
++    "node_modules/@img/sharp-freebsd-wasm32": {
++      "version": "0.35.5",
++      "resolved": "https://registry.npmjs.org/@img/sharp-freebsd-wasm32/-/sharp-freebsd-wasm32-0.35.5.tgz",
++      "integrity": "sha512-Y/z91nEZ4uIBX5X3nfTovjU9lHNKFYbL2lpHCLVNmXQK03VIZvXBBt0KxbPGp2SdGSF+2mQU4e+hQaWOt86iAw==",
++      "license": "Apache-2.0",
++      "optional": true,
++      "os": [
++        "freebsd"
++      ],
++      "dependencies": {
++        "@img/sharp-wasm32": "0.35.5"
++      },
++      "engines": {
++        "node": ">=20.9.0"
++      },
++      "funding": {
++        "url": "https://opencollective.com/libvips"
+       }
+     },
+     "node_modules/@img/sharp-libvips-darwin-arm64": {
+-      "version": "1.2.4",
+-      "resolved": "https://registry.npmjs.org/@img/sharp-libvips-darwin-arm64/-/sharp-libvips-darwin-arm64-1.2.4.tgz",
+-      "integrity": "sha512-zqjjo7RatFfFoP0MkQ51jfuFZBnVE2pRiaydKJ1G/rHZvnsrHAOcQALIi9sA5co5xenQdTugCvtb1cuf78Vf4g==",
++      "version": "1.3.4",
++      "resolved": "https://registry.npmjs.org/@img/sharp-libvips-darwin-arm64/-/sharp-libvips-darwin-arm64-1.3.4.tgz",
++      "integrity": "sha512-5R89nBYiRdUlSWJxPhO+GVtaXzXSxKnRu/xqMn3KTA3L9EB9Oy/P+Nn2f2vlhPuUdy/Zusb2DarbyTpGCfEDuw==",
+       "cpu": [
+         "arm64"
+       ],
+@@ -109,9 +128,9 @@
+       }
+     },
+     "node_modules/@img/sharp-libvips-darwin-x64": {
+-      "version": "1.2.4",
+-      "resolved": "https://registry.npmjs.org/@img/sharp-libvips-darwin-x64/-/sharp-libvips-darwin-x64-1.2.4.tgz",
+-      "integrity": "sha512-1IOd5xfVhlGwX+zXv2N93k0yMONvUlANylbJw1eTah8K/Jtpi15KC+WSiaX/nBmbm2HxRM1gZ0nSdjSsrZbGKg==",
++      "version": "1.3.4",
++      "resolved": "https://registry.npmjs.org/@img/sharp-libvips-darwin-x64/-/sharp-libvips-darwin-x64-1.3.4.tgz",
++      "integrity": "sha512-iR2OKH80yi0U+dUplyh3/xdpFvps6YkCwsXenIJxqxR1v9o+xtKTGbS9H7cps+2Vxjc8B1j96p75NmTGjIhtpQ==",
+       "cpu": [
+         "x64"
+       ],
+@@ -125,12 +144,15 @@
+       }
+     },
+     "node_modules/@img/sharp-libvips-linux-arm": {
+-      "version": "1.2.4",
+-      "resolved": "https://registry.npmjs.org/@img/sharp-libvips-linux-arm/-/sharp-libvips-linux-arm-1.2.4.tgz",
+-      "integrity": "sha512-bFI7xcKFELdiNCVov8e44Ia4u2byA+l3XtsAj+Q8tfCwO6BQ8iDojYdvoPMqsKDkuoOo+X6HZA0s0q11ANMQ8A==",
++      "version": "1.3.4",
++      "resolved": "https://registry.npmjs.org/@img/sharp-libvips-linux-arm/-/sharp-libvips-linux-arm-1.3.4.tgz",
++      "integrity": "sha512-LmRtTsOHuvM2+wlO2Db37dx5MiZhB0FvSunciw48YjdOkZz9KAiRbm8ujeMOA1INqmei5NapFxYEK1D1ZSidmw==",
+       "cpu": [
+         "arm"
+       ],
++      "libc": [
++        "glibc"
++      ],
+       "license": "LGPL-3.0-or-later",
+       "optional": true,
+       "os": [
+@@ -141,12 +163,15 @@
+       }
+     },
+     "node_modules/@img/sharp-libvips-linux-arm64": {
+-      "version": "1.2.4",
+-      "resolved": "https://registry.npmjs.org/@img/sharp-libvips-linux-arm64/-/sharp-libvips-linux-arm64-1.2.4.tgz",
+-      "integrity": "sha512-excjX8DfsIcJ10x1Kzr4RcWe1edC9PquDRRPx3YVCvQv+U5p7Yin2s32ftzikXojb1PIFc/9Mt28/y+iRklkrw==",
++      "version": "1.3.4",
++      "resolved": "https://registry.npmjs.org/@img/sharp-libvips-linux-arm64/-/sharp-libvips-linux-arm64-1.3.4.tgz",
++      "integrity": "sha512-Y3dgX/6lE2QhQb+Gxy0WZxfg9MEm/JBjamZpS2IklP7xIQoKN4hzAm7KcMVGtaVDt3neE9OKBC7vAfonA/Lr1A==",
+       "cpu": [
+         "arm64"
+       ],
++      "libc": [
++        "glibc"
++      ],
+       "license": "LGPL-3.0-or-later",
+       "optional": true,
+       "os": [
+@@ -157,12 +182,15 @@
+       }
+     },
+     "node_modules/@img/sharp-libvips-linux-ppc64": {
+-      "version": "1.2.4",
+-      "resolved": "https://registry.npmjs.org/@img/sharp-libvips-linux-ppc64/-/sharp-libvips-linux-ppc64-1.2.4.tgz",
+-      "integrity": "sha512-FMuvGijLDYG6lW+b/UvyilUWu5Ayu+3r2d1S8notiGCIyYU/76eig1UfMmkZ7vwgOrzKzlQbFSuQfgm7GYUPpA==",
++      "version": "1.3.4",
++      "resolved": "https://registry.npmjs.org/@img/sharp-libvips-linux-ppc64/-/sharp-libvips-linux-ppc64-1.3.4.tgz",
++      "integrity": "sha512-Le6boB8Tai0Nis+gIxIpKx68UDVVIqdR8Tin5Yf1z2LJJQLDJvCDRqRu+jC2qCoD+eIomonmOwB4smBRxfVpYQ==",
+       "cpu": [
+         "ppc64"
+       ],
++      "libc": [
++        "glibc"
++      ],
+       "license": "LGPL-3.0-or-later",
+       "optional": true,
+       "os": [
+@@ -173,12 +201,15 @@
+       }
+     },
+     "node_modules/@img/sharp-libvips-linux-riscv64": {
+-      "version": "1.2.4",
+-      "resolved": "https://registry.npmjs.org/@img/sharp-libvips-linux-riscv64/-/sharp-libvips-linux-riscv64-1.2.4.tgz",
+-      "integrity": "sha512-oVDbcR4zUC0ce82teubSm+x6ETixtKZBh/qbREIOcI3cULzDyb18Sr/Wcyx7NRQeQzOiHTNbZFF1UwPS2scyGA==",
++      "version": "1.3.4",
++      "resolved": "https://registry.npmjs.org/@img/sharp-libvips-linux-riscv64/-/sharp-libvips-linux-riscv64-1.3.4.tgz",
++      "integrity": "sha512-aHkkIEHPRdQEegJN20MLmGtxYD9R2wQr3Cwpddnu5+YKMt6Uzax7S9h5gpZTo8wyrGuZSlfQ63OevL5mTyOC7Q==",
+       "cpu": [
+         "riscv64"
+       ],
++      "libc": [
++        "glibc"
++      ],
+       "license": "LGPL-3.0-or-later",
+       "optional": true,
+       "os": [
+@@ -189,12 +220,15 @@
+       }
+     },
+     "node_modules/@img/sharp-libvips-linux-s390x": {
+-      "version": "1.2.4",
+-      "resolved": "https://registry.npmjs.org/@img/sharp-libvips-linux-s390x/-/sharp-libvips-linux-s390x-1.2.4.tgz",
+-      "integrity": "sha512-qmp9VrzgPgMoGZyPvrQHqk02uyjA0/QrTO26Tqk6l4ZV0MPWIW6LTkqOIov+J1yEu7MbFQaDpwdwJKhbJvuRxQ==",
++      "version": "1.3.4",
++      "resolved": "https://registry.npmjs.org/@img/sharp-libvips-linux-s390x/-/sharp-libvips-linux-s390x-1.3.4.tgz",
++      "integrity": "sha512-ra/mB6MikESDUO7Yg+Mi95bFBb9GsObURuhnOv3OqknjGe9sZrG8tCe9q0xSIGrtLgvgw0gKnFWcK4blSgQOuQ==",
+       "cpu": [
+         "s390x"
+       ],
++      "libc": [
++        "glibc"
++      ],
+       "license": "LGPL-3.0-or-later",
+       "optional": true,
+       "os": [
+@@ -205,12 +239,15 @@
+       }
+     },
+     "node_modules/@img/sharp-libvips-linux-x64": {
+-      "version": "1.2.4",
+-      "resolved": "https://registry.npmjs.org/@img/sharp-libvips-linux-x64/-/sharp-libvips-linux-x64-1.2.4.tgz",
+-      "integrity": "sha512-tJxiiLsmHc9Ax1bz3oaOYBURTXGIRDODBqhveVHonrHJ9/+k89qbLl0bcJns+e4t4rvaNBxaEZsFtSfAdquPrw==",
++      "version": "1.3.4",
++      "resolved": "https://registry.npmjs.org/@img/sharp-libvips-linux-x64/-/sharp-libvips-linux-x64-1.3.4.tgz",
++      "integrity": "sha512-GJ//SSXbnwSDes02umB3nDJLFcQzw8a18V8fyhqr6tV515tOEMdImjjxj1AoafMRz56F3PHgftnj1QEKSU1zkw==",
+       "cpu": [
+         "x64"
+       ],
++      "libc": [
++        "glibc"
++      ],
+       "license": "LGPL-3.0-or-later",
+       "optional": true,
+       "os": [
+@@ -221,12 +258,15 @@
+       }
+     },
+     "node_modules/@img/sharp-libvips-linuxmusl-arm64": {
+-      "version": "1.2.4",
+-      "resolved": "https://registry.npmjs.org/@img/sharp-libvips-linuxmusl-arm64/-/sharp-libvips-linuxmusl-arm64-1.2.4.tgz",
+-      "integrity": "sha512-FVQHuwx1IIuNow9QAbYUzJ+En8KcVm9Lk5+uGUQJHaZmMECZmOlix9HnH7n1TRkXMS0pGxIJokIVB9SuqZGGXw==",
++      "version": "1.3.4",
++      "resolved": "https://registry.npmjs.org/@img/sharp-libvips-linuxmusl-arm64/-/sharp-libvips-linuxmusl-arm64-1.3.4.tgz",
++      "integrity": "sha512-hvulFwtjUcagsis6BBxHwGFwWoNZjgYmULGVrZcyfNbjA8hKILbRxGg15/7w5HDyXHXUos/j6baAWqnCyQ2DWA==",
+       "cpu": [
+         "arm64"
+       ],
++      "libc": [
++        "musl"
++      ],
+       "license": "LGPL-3.0-or-later",
+       "optional": true,
+       "os": [
+@@ -237,12 +277,15 @@
+       }
+     },
+     "node_modules/@img/sharp-libvips-linuxmusl-x64": {
+-      "version": "1.2.4",
+-      "resolved": "https://registry.npmjs.org/@img/sharp-libvips-linuxmusl-x64/-/sharp-libvips-linuxmusl-x64-1.2.4.tgz",
+-      "integrity": "sha512-+LpyBk7L44ZIXwz/VYfglaX/okxezESc6UxDSoyo2Ks6Jxc4Y7sGjpgU9s4PMgqgjj1gZCylTieNamqA1MF7Dg==",
++      "version": "1.3.4",
++      "resolved": "https://registry.npmjs.org/@img/sharp-libvips-linuxmusl-x64/-/sharp-libvips-linuxmusl-x64-1.3.4.tgz",
++      "integrity": "sha512-6zXKeE/p39I1AmA3cJG35eyBGNqNddLnUXjhwBnsGjFPWqf5VKkDBEqaEkPDoTEtkxwi2vv8Tcr2mDyP4So7Fg==",
+       "cpu": [
+         "x64"
+       ],
++      "libc": [
++        "musl"
++      ],
+       "license": "LGPL-3.0-or-later",
+       "optional": true,
+       "os": [
+@@ -253,204 +296,244 @@
+       }
+     },
+     "node_modules/@img/sharp-linux-arm": {
+-      "version": "0.34.5",
+-      "resolved": "https://registry.npmjs.org/@img/sharp-linux-arm/-/sharp-linux-arm-0.34.5.tgz",
+-      "integrity": "sha512-9dLqsvwtg1uuXBGZKsxem9595+ujv0sJ6Vi8wcTANSFpwV/GONat5eCkzQo/1O6zRIkh0m/8+5BjrRr7jDUSZw==",
++      "version": "0.35.5",
++      "resolved": "https://registry.npmjs.org/@img/sharp-linux-arm/-/sharp-linux-arm-0.35.5.tgz",
++      "integrity": "sha512-LEaXK2WdXVK5ykcw0buWyPMsmLLL2vpHLD6yrNSW+JGEL3BZPA4tpKN6iaMc4AxTTAoaX/sU1rOL51lcIz48ZQ==",
+       "cpu": [
+         "arm"
+       ],
++      "libc": [
++        "glibc"
++      ],
+       "license": "Apache-2.0",
+       "optional": true,
+       "os": [
+         "linux"
+       ],
+       "engines": {
+-        "node": "^18.17.0 || ^20.3.0 || >=21.0.0"
++        "node": ">=20.9.0"
+       },
+       "funding": {
+         "url": "https://opencollective.com/libvips"
+       },
+       "optionalDependencies": {
+-        "@img/sharp-libvips-linux-arm": "1.2.4"
++        "@img/sharp-libvips-linux-arm": "1.3.4"
+       }
+     },
+     "node_modules/@img/sharp-linux-arm64": {
+-      "version": "0.34.5",
+-      "resolved": "https://registry.npmjs.org/@img/sharp-linux-arm64/-/sharp-linux-arm64-0.34.5.tgz",
+-      "integrity": "sha512-bKQzaJRY/bkPOXyKx5EVup7qkaojECG6NLYswgktOZjaXecSAeCWiZwwiFf3/Y+O1HrauiE3FVsGxFg8c24rZg==",
++      "version": "0.35.5",
++      "resolved": "https://registry.npmjs.org/@img/sharp-linux-arm64/-/sharp-linux-arm64-0.35.5.tgz",
++      "integrity": "sha512-LYVx5JTsOM2CBzmxreh+nl64/3H6Xb09iSLknqH47z2T2DFFxDeFLP5y4dJwe6H7uGQlHPyEEtIqyo3DYsRwdQ==",
+       "cpu": [
+         "arm64"
+       ],
++      "libc": [
++        "glibc"
++      ],
+       "license": "Apache-2.0",
+       "optional": true,
+       "os": [
+         "linux"
+       ],
+       "engines": {
+-        "node": "^18.17.0 || ^20.3.0 || >=21.0.0"
++        "node": ">=20.9.0"
+       },
+       "funding": {
+         "url": "https://opencollective.com/libvips"
+       },
+       "optionalDependencies": {
+-        "@img/sharp-libvips-linux-arm64": "1.2.4"
++        "@img/sharp-libvips-linux-arm64": "1.3.4"
+       }
+     },
+     "node_modules/@img/sharp-linux-ppc64": {
+-      "version": "0.34.5",
+-      "resolved": "https://registry.npmjs.org/@img/sharp-linux-ppc64/-/sharp-linux-ppc64-0.34.5.tgz",
+-      "integrity": "sha512-7zznwNaqW6YtsfrGGDA6BRkISKAAE1Jo0QdpNYXNMHu2+0dTrPflTLNkpc8l7MUP5M16ZJcUvysVWWrMefZquA==",
++      "version": "0.35.5",
++      "resolved": "https://registry.npmjs.org/@img/sharp-linux-ppc64/-/sharp-linux-ppc64-0.35.5.tgz",
++      "integrity": "sha512-QVxAAq8evVRI9ia2vqgwrmWucn5Dfv+JdWzj75pD8omHLPSP7f8p20O8jxzjCcuCEQEOtYOZUmX1hkiZ0kdevA==",
+       "cpu": [
+         "ppc64"
+       ],
++      "libc": [
++        "glibc"
++      ],
+       "license": "Apache-2.0",
+       "optional": true,
+       "os": [
+         "linux"
+       ],
+       "engines": {
+-        "node": "^18.17.0 || ^20.3.0 || >=21.0.0"
++        "node": ">=20.9.0"
+       },
+       "funding": {
+         "url": "https://opencollective.com/libvips"
+       },
+       "optionalDependencies": {
+-        "@img/sharp-libvips-linux-ppc64": "1.2.4"
++        "@img/sharp-libvips-linux-ppc64": "1.3.4"
+       }
+     },
+     "node_modules/@img/sharp-linux-riscv64": {
+-      "version": "0.34.5",
+-      "resolved": "https://registry.npmjs.org/@img/sharp-linux-riscv64/-/sharp-linux-riscv64-0.34.5.tgz",
+-      "integrity": "sha512-51gJuLPTKa7piYPaVs8GmByo7/U7/7TZOq+cnXJIHZKavIRHAP77e3N2HEl3dgiqdD/w0yUfiJnII77PuDDFdw==",
++      "version": "0.35.5",
++      "resolved": "https://registry.npmjs.org/@img/sharp-linux-riscv64/-/sharp-linux-riscv64-0.35.5.tgz",
++      "integrity": "sha512-LtdreXguaavKODPIfzJ4kffx7UNt1omwtK0rch4EBbbSTXPnxWmYSayXdLJw0fJzQ97kHt1gL/yh4tvU+nCyRQ==",
+       "cpu": [
+         "riscv64"
+       ],
++      "libc": [
++        "glibc"
++      ],
+       "license": "Apache-2.0",
+       "optional": true,
+       "os": [
+         "linux"
+       ],
+       "engines": {
+-        "node": "^18.17.0 || ^20.3.0 || >=21.0.0"
++        "node": ">=20.9.0"
+       },
+       "funding": {
+         "url": "https://opencollective.com/libvips"
+       },
+       "optionalDependencies": {
+-        "@img/sharp-libvips-linux-riscv64": "1.2.4"
++        "@img/sharp-libvips-linux-riscv64": "1.3.4"
+       }
+     },
+     "node_modules/@img/sharp-linux-s390x": {
+-      "version": "0.34.5",
+-      "resolved": "https://registry.npmjs.org/@img/sharp-linux-s390x/-/sharp-linux-s390x-0.34.5.tgz",
+-      "integrity": "sha512-nQtCk0PdKfho3eC5MrbQoigJ2gd1CgddUMkabUj+rBevs8tZ2cULOx46E7oyX+04WGfABgIwmMC0VqieTiR4jg==",
++      "version": "0.35.5",
++      "resolved": "https://registry.npmjs.org/@img/sharp-linux-s390x/-/sharp-linux-s390x-0.35.5.tgz",
++      "integrity": "sha512-UZasTOFiYzotTsGOCu42BfUzP6Tu6Do/947iRm1RsLKvlllxwGcn4RN27LibGWceix4Y+Pmw3jsnTcCQIgWjqA==",
+       "cpu": [
+         "s390x"
+       ],
++      "libc": [
++        "glibc"
++      ],
+       "license": "Apache-2.0",
+       "optional": true,
+       "os": [
+         "linux"
+       ],
+       "engines": {
+-        "node": "^18.17.0 || ^20.3.0 || >=21.0.0"
++        "node": ">=20.9.0"
+       },
+       "funding": {
+         "url": "https://opencollective.com/libvips"
+       },
+       "optionalDependencies": {
+-        "@img/sharp-libvips-linux-s390x": "1.2.4"
++        "@img/sharp-libvips-linux-s390x": "1.3.4"
+       }
+     },
+     "node_modules/@img/sharp-linux-x64": {
+-      "version": "0.34.5",
+-      "resolved": "https://registry.npmjs.org/@img/sharp-linux-x64/-/sharp-linux-x64-0.34.5.tgz",
+-      "integrity": "sha512-MEzd8HPKxVxVenwAa+JRPwEC7QFjoPWuS5NZnBt6B3pu7EG2Ge0id1oLHZpPJdn3OQK+BQDiw9zStiHBTJQQQQ==",
++      "version": "0.35.5",
++      "resolved": "https://registry.npmjs.org/@img/sharp-linux-x64/-/sharp-linux-x64-0.35.5.tgz",
++      "integrity": "sha512-SxFtLTeJInhAA9Q836kux2vZNeOBQEx658qvbboZScr0wIARym3IcGmW7KpVD5sbVg0Ojy+udFQdayYIZyoNog==",
+       "cpu": [
+         "x64"
+       ],
++      "libc": [
++        "glibc"
++      ],
+       "license": "Apache-2.0",
+       "optional": true,
+       "os": [
+         "linux"
+       ],
+       "engines": {
+-        "node": "^18.17.0 || ^20.3.0 || >=21.0.0"
++        "node": ">=20.9.0"
+       },
+       "funding": {
+         "url": "https://opencollective.com/libvips"
+       },
+       "optionalDependencies": {
+-        "@img/sharp-libvips-linux-x64": "1.2.4"
++        "@img/sharp-libvips-linux-x64": "1.3.4"
+       }
+     },
+     "node_modules/@img/sharp-linuxmusl-arm64": {
+-      "version": "0.34.5",
+-      "resolved": "https://registry.npmjs.org/@img/sharp-linuxmusl-arm64/-/sharp-linuxmusl-arm64-0.34.5.tgz",
+-      "integrity": "sha512-fprJR6GtRsMt6Kyfq44IsChVZeGN97gTD331weR1ex1c1rypDEABN6Tm2xa1wE6lYb5DdEnk03NZPqA7Id21yg==",
++      "version": "0.35.5",
++      "resolved": "https://registry.npmjs.org/@img/sharp-linuxmusl-arm64/-/sharp-linuxmusl-arm64-0.35.5.tgz",
++      "integrity": "sha512-9HbMclmI1zlNkFRs3z9/eBtDjfD0sGlrX1z6b1qwmiFY5ElDLh4BC0LPBdVp7z1DXFiKlIcznf+ZlsuZzLxQqg==",
+       "cpu": [
+         "arm64"
+       ],
++      "libc": [
++        "musl"
++      ],
+       "license": "Apache-2.0",
+       "optional": true,
+       "os": [
+         "linux"
+       ],
+       "engines": {
+-        "node": "^18.17.0 || ^20.3.0 || >=21.0.0"
++        "node": ">=20.9.0"
+       },
+       "funding": {
+         "url": "https://opencollective.com/libvips"
+       },
+       "optionalDependencies": {
+-        "@img/sharp-libvips-linuxmusl-arm64": "1.2.4"
++        "@img/sharp-libvips-linuxmusl-arm64": "1.3.4"
+       }
+     },
+     "node_modules/@img/sharp-linuxmusl-x64": {
+-      "version": "0.34.5",
+-      "resolved": "https://registry.npmjs.org/@img/sharp-linuxmusl-x64/-/sharp-linuxmusl-x64-0.34.5.tgz",
+-      "integrity": "sha512-Jg8wNT1MUzIvhBFxViqrEhWDGzqymo3sV7z7ZsaWbZNDLXRJZoRGrjulp60YYtV4wfY8VIKcWidjojlLcWrd8Q==",
++      "version": "0.35.5",
++      "resolved": "https://registry.npmjs.org/@img/sharp-linuxmusl-x64/-/sharp-linuxmusl-x64-0.35.5.tgz",
++      "integrity": "sha512-4KOphqB035HrVdqLZfCgMzzERrQkkzOwRhl4OAkRO1YCldbaFjySXMaK534Mo0V+LndnlJk+sbUyLeU0ULyD1A==",
+       "cpu": [
+         "x64"
+       ],
++      "libc": [
++        "musl"
++      ],
+       "license": "Apache-2.0",
+       "optional": true,
+       "os": [
+         "linux"
+       ],
+       "engines": {
+-        "node": "^18.17.0 || ^20.3.0 || >=21.0.0"
++        "node": ">=20.9.0"
+       },
+       "funding": {
+         "url": "https://opencollective.com/libvips"
+       },
+       "optionalDependencies": {
+-        "@img/sharp-libvips-linuxmusl-x64": "1.2.4"
++        "@img/sharp-libvips-linuxmusl-x64": "1.3.4"
+       }
+     },
+     "node_modules/@img/sharp-wasm32": {
+-      "version": "0.34.5",
+-      "resolved": "https://registry.npmjs.org/@img/sharp-wasm32/-/sharp-wasm32-0.34.5.tgz",
+-      "integrity": "sha512-OdWTEiVkY2PHwqkbBI8frFxQQFekHaSSkUIJkwzclWZe64O1X4UlUjqqqLaPbUpMOQk6FBu/HtlGXNblIs0huw==",
++      "version": "0.35.5",
++      "resolved": "https://registry.npmjs.org/@img/sharp-wasm32/-/sharp-wasm32-0.35.5.tgz",
++      "integrity": "sha512-Ptsga1su4tQx+LLF1ECS9U6nz5kmrXKo6XVbtR48Ke3ZRxxgaWBu7IDtEe1quo8hiupwm6WFqxVlXaSf7IINGQ==",
++      "license": "Apache-2.0 AND LGPL-3.0-or-later AND MIT",
++      "optional": true,
++      "dependencies": {
++        "@emnapi/runtime": "^1.11.3"
++      },
++      "engines": {
++        "node": ">=20.9.0"
++      },
++      "funding": {
++        "url": "https://opencollective.com/libvips"
++      }
++    },
++    "node_modules/@img/sharp-webcontainers-wasm32": {
++      "version": "0.35.5",
++      "resolved": "https://registry.npmjs.org/@img/sharp-webcontainers-wasm32/-/sharp-webcontainers-wasm32-0.35.5.tgz",
++      "integrity": "sha512-hfhF/FmoQyTUkA0bIKFOtw536BQSeBMe6BF6QyWlrPxT754+TFLaZ7sKKTfvvM0yJgKgaYTwnFCIZ/GuDw5SUA==",
+       "cpu": [
+         "wasm32"
+       ],
+-      "license": "Apache-2.0 AND LGPL-3.0-or-later AND MIT",
++      "license": "Apache-2.0",
+       "optional": true,
+       "dependencies": {
+-        "@emnapi/runtime": "^1.7.0"
++        "@img/sharp-wasm32": "0.35.5"
+       },
+       "engines": {
+-        "node": "^18.17.0 || ^20.3.0 || >=21.0.0"
++        "node": ">=20.9.0"
+       },
+       "funding": {
+         "url": "https://opencollective.com/libvips"
+       }
+     },
+     "node_modules/@img/sharp-win32-arm64": {
+-      "version": "0.34.5",
+-      "resolved": "https://registry.npmjs.org/@img/sharp-win32-arm64/-/sharp-win32-arm64-0.34.5.tgz",
+-      "integrity": "sha512-WQ3AgWCWYSb2yt+IG8mnC6Jdk9Whs7O0gxphblsLvdhSpSTtmu69ZG1Gkb6NuvxsNACwiPV6cNSZNzt0KPsw7g==",
++      "version": "0.35.5",
++      "resolved": "https://registry.npmjs.org/@img/sharp-win32-arm64/-/sharp-win32-arm64-0.35.5.tgz",
++      "integrity": "sha512-X4t7g+7ZA5DKblCBEXGjUqqemj4vczING/5viFwAL8h4N3qYeyjwdCvRLHi4EdOUI+2Z7UFlp1VM+p/AuEtm6Q==",
+       "cpu": [
+         "arm64"
+       ],
+@@ -460,16 +543,16 @@
+         "win32"
+       ],
+       "engines": {
+-        "node": "^18.17.0 || ^20.3.0 || >=21.0.0"
++        "node": ">=20.9.0"
+       },
+       "funding": {
+         "url": "https://opencollective.com/libvips"
+       }
+     },
+     "node_modules/@img/sharp-win32-ia32": {
+-      "version": "0.34.5",
+-      "resolved": "https://registry.npmjs.org/@img/sharp-win32-ia32/-/sharp-win32-ia32-0.34.5.tgz",
+-      "integrity": "sha512-FV9m/7NmeCmSHDD5j4+4pNI8Cp3aW+JvLoXcTUo0IqyjSfAZJ8dIUmijx1qaJsIiU+Hosw6xM5KijAWRJCSgNg==",
++      "version": "0.35.5",
++      "resolved": "https://registry.npmjs.org/@img/sharp-win32-ia32/-/sharp-win32-ia32-0.35.5.tgz",
++      "integrity": "sha512-5Zm82LoBc43nhwNybZlG7Y1KO//Zhsn306fQl29ZOuStHLGTo3BWL83q3cznX0poxSAMuYL1On/BHBxkBeKr6A==",
+       "cpu": [
+         "ia32"
+       ],
+@@ -479,16 +562,16 @@
+         "win32"
+       ],
+       "engines": {
+-        "node": "^18.17.0 || ^20.3.0 || >=21.0.0"
++        "node": "^20.9.0"
+       },
+       "funding": {
+         "url": "https://opencollective.com/libvips"
+       }
+     },
+     "node_modules/@img/sharp-win32-x64": {
+-      "version": "0.34.5",
+-      "resolved": "https://registry.npmjs.org/@img/sharp-win32-x64/-/sharp-win32-x64-0.34.5.tgz",
+-      "integrity": "sha512-+29YMsqY2/9eFEiW93eqWnuLcWcufowXewwSNIT6UwZdUUCrM3oFjMWH/Z6/TMmb4hlFenmfAVbpWeup2jryCw==",
++      "version": "0.35.5",
++      "resolved": "https://registry.npmjs.org/@img/sharp-win32-x64/-/sharp-win32-x64-0.35.5.tgz",
++      "integrity": "sha512-x76eH0vEiHlcMQu8Y8IenntaACtddpT6W0wmXtWrnKcnKI7ME5DdgqhAD6SEWOEl1v2zDvkZDhFA9KnURwpfqg==",
+       "cpu": [
+         "x64"
+       ],
+@@ -498,7 +581,7 @@
+         "win32"
+       ],
+       "engines": {
+-        "node": "^18.17.0 || ^20.3.0 || >=21.0.0"
++        "node": ">=20.9.0"
+       },
+       "funding": {
+         "url": "https://opencollective.com/libvips"
+@@ -623,6 +706,15 @@
+         "undici-types": "~7.18.0"
+       }
+     },
++    "node_modules/@types/ws": {
++      "version": "8.18.2",
++      "resolved": "https://registry.npmjs.org/@types/ws/-/ws-8.18.2.tgz",
++      "integrity": "sha512-67MQl+fpWKVTT1NYdnmo3U4sc/xPo/zQBncVnI74qmQa0z/b+1g6iYqNmGCPbxO+zz2aklb08a0oHfegiVd0/w==",
++      "license": "MIT",
++      "dependencies": {
++        "@types/node": "*"
++      }
++    },
+     "node_modules/accepts": {
+       "version": "2.0.0",
+       "resolved": "https://registry.npmjs.org/accepts/-/accepts-2.0.0.tgz",
+@@ -687,14 +779,11 @@
+       }
+     },
+     "node_modules/balanced-match": {
+-      "version": "4.0.4",
+-      "resolved": "https://registry.npmjs.org/balanced-match/-/balanced-match-4.0.4.tgz",
+-      "integrity": "sha512-BLrgEcRTwX2o6gGxGOCNyMvGSp35YofuYzw9h1IMTRmKqttAZZVU67bdb9Pr2vUHA8+j3i2tJfjO6C6+4myGTA==",
++      "version": "1.0.2",
++      "resolved": "https://registry.npmjs.org/balanced-match/-/balanced-match-1.0.2.tgz",
++      "integrity": "sha512-3oSeUO0TMV67hN1AmbXsK4yaqU7tjiHlbxRDZOpH0KW9+CeX4bRAaX0Anxt0tx2MrpRpWwQaPwIlISEJhYU5Pw==",
+       "dev": true,
+-      "license": "MIT",
+-      "engines": {
+-        "node": "18 || 20 || >=22"
+-      }
++      "license": "MIT"
+     },
+     "node_modules/base64-js": {
+       "version": "1.5.1",
+@@ -752,20 +841,20 @@
+       }
+     },
+     "node_modules/body-parser": {
+-      "version": "2.2.2",
+-      "resolved": "https://registry.npmjs.org/body-parser/-/body-parser-2.2.2.tgz",
+-      "integrity": "sha512-oP5VkATKlNwcgvxi0vM0p/D3n2C3EReYVX+DNYs5TjZFn/oQt2j+4sVJtSMr18pdRr8wjTcBl6LoV+FUwzPmNA==",
++      "version": "2.4.0",
++      "resolved": "https://registry.npmjs.org/body-parser/-/body-parser-2.4.0.tgz",
++      "integrity": "sha512-Ifk1KcLrxaGt1occQagQNFNNOqRt1LFuehEnHHzB8Z6cRgIxRU1TBaiIsUiCdA+gy5PL7Y1IX31DNKkRmxtXjQ==",
+       "license": "MIT",
+       "dependencies": {
+         "bytes": "^3.1.2",
+-        "content-type": "^1.0.5",
++        "content-type": "^2.1.0",
+         "debug": "^4.4.3",
+-        "http-errors": "^2.0.0",
+-        "iconv-lite": "^0.7.0",
++        "http-errors": "^2.0.1",
++        "iconv-lite": "^0.7.3",
+         "on-finished": "^2.4.1",
+-        "qs": "^6.14.1",
+-        "raw-body": "^3.0.1",
+-        "type-is": "^2.0.1"
++        "qs": "^6.16.1",
++        "raw-body": "^3.0.2",
++        "type-is": "^2.1.0"
+       },
+       "engines": {
+         "node": ">=18"
+@@ -775,17 +864,28 @@
+         "url": "https://opencollective.com/express"
+       }
+     },
++    "node_modules/body-parser/node_modules/content-type": {
++      "version": "2.1.0",
++      "resolved": "https://registry.npmjs.org/content-type/-/content-type-2.1.0.tgz",
++      "integrity": "sha512-mj7UPXE0jaqaOsukNZRUEfEi2AcL7C/vwmwcHV0O97eO1E1pxBZuyjlZrx5seTaNBg1U6+o35wpa35Qfcc+7ag==",
++      "license": "MIT",
++      "engines": {
++        "node": ">=18"
++      },
++      "funding": {
++        "type": "opencollective",
++        "url": "https://opencollective.com/express"
++      }
++    },
+     "node_modules/brace-expansion": {
+-      "version": "5.0.4",
+-      "resolved": "https://registry.npmjs.org/brace-expansion/-/brace-expansion-5.0.4.tgz",
+-      "integrity": "sha512-h+DEnpVvxmfVefa4jFbCf5HdH5YMDXRsmKflpf1pILZWRFlTbJpxeU55nJl4Smt5HQaGzg1o6RHFPJaOqnmBDg==",
++      "version": "1.1.22",
++      "resolved": "https://registry.npmjs.org/brace-expansion/-/brace-expansion-1.1.22.tgz",
++      "integrity": "sha512-CKLDTuSsN0+r1ThM0WkzzBI7dnPI6xEGfa/JnVYIK9JNBA1N1NyPwXVHor//NKD/y3sDxp764sZdLhFK7pH8XQ==",
+       "dev": true,
+       "license": "MIT",
+       "dependencies": {
+-        "balanced-match": "^4.0.2"
+-      },
+-      "engines": {
+-        "node": "18 || 20 || >=22"
++        "balanced-match": "^1.0.0",
++        "concat-map": "0.0.1"
+       }
+     },
+     "node_modules/braces": {
+@@ -815,12 +915,6 @@
+       "integrity": "sha512-zRpUiDwd/xk6ADqPMATG8vc9VPrkck7T07OIx0gnjmJAnHnTVXNQG3vfvWNuiZIkwu9KrKdA1iJKfsfTVxE6NA==",
+       "license": "BSD-3-Clause"
+     },
+-    "node_modules/buffer-from": {
+-      "version": "1.1.2",
+-      "resolved": "https://registry.npmjs.org/buffer-from/-/buffer-from-1.1.2.tgz",
+-      "integrity": "sha512-E+XQCRwSbaaiChtv6k6Dwgc+bx+Bs6vuKJHHl5kox/BaKbhiXzqQOwK4cO22yElGp2OCmjwVhT3HmxgyPGnJfQ==",
+-      "license": "MIT"
+-    },
+     "node_modules/busboy": {
+       "version": "1.6.0",
+       "resolved": "https://registry.npmjs.org/busboy/-/busboy-1.6.0.tgz",
+@@ -902,20 +996,12 @@
+         "node": ">= 0.8"
+       }
+     },
+-    "node_modules/concat-stream": {
+-      "version": "2.0.0",
+-      "resolved": "https://registry.npmjs.org/concat-stream/-/concat-stream-2.0.0.tgz",
+-      "integrity": "sha512-MWufYdFw53ccGjCA+Ol7XJYpAlW6/prSMzuPOTRnJGcGzuhLn4Scrz7qf6o8bROZ514ltazcIFJZevcfbo0x7A==",
+-      "engines": [
+-        "node >= 6.0"
+-      ],
+-      "license": "MIT",
+-      "dependencies": {
+-        "buffer-from": "^1.0.0",
+-        "inherits": "^2.0.3",
+-        "readable-stream": "^3.0.2",
+-        "typedarray": "^0.0.6"
+-      }
++    "node_modules/concat-map": {
++      "version": "0.0.1",
++      "resolved": "https://registry.npmjs.org/concat-map/-/concat-map-0.0.1.tgz",
++      "integrity": "sha512-/Srv4dswyQNBfohGpz9o6Yb3Gz3SrUDqBH5rTuhGR7ahtlbYKnVxw2bCFMRljaA7EXHaXZ8wsHdodFvbkhKmqg==",
++      "dev": true,
++      "license": "MIT"
+     },
+     "node_modules/content-disposition": {
+       "version": "1.0.1",
+@@ -1074,20 +1160,20 @@
+       }
+     },
+     "node_modules/engine.io": {
+-      "version": "6.6.5",
+-      "resolved": "https://registry.npmjs.org/engine.io/-/engine.io-6.6.5.tgz",
+-      "integrity": "sha512-2RZdgEbXmp5+dVbRm0P7HQUImZpICccJy7rN7Tv+SFa55pH+lxnuw6/K1ZxxBfHoYpSkHLAO92oa8O4SwFXA2A==",
++      "version": "6.6.13",
++      "resolved": "https://registry.npmjs.org/engine.io/-/engine.io-6.6.13.tgz",
++      "integrity": "sha512-KoGsH77uceU1N1dyTEYgHTsEk9aEpwraBlzGtgph/OiCX5v3S27h/uwqKi8K2QLxWNoHDKWE/jW0bWbQrwwSmQ==",
+       "license": "MIT",
+       "dependencies": {
+         "@types/cors": "^2.8.12",
+         "@types/node": ">=10.0.0",
++        "@types/ws": "^8.5.12",
+         "accepts": "~1.3.4",
+-        "base64id": "2.0.0",
+         "cookie": "~0.7.2",
+         "cors": "~2.8.5",
+         "debug": "~4.4.1",
+         "engine.io-parser": "~5.2.1",
+-        "ws": "~8.18.3"
++        "ws": "^8.23.0"
+       },
+       "engines": {
+         "node": ">=10.2.0"
+@@ -1552,9 +1638,9 @@
+       }
+     },
+     "node_modules/iconv-lite": {
+-      "version": "0.7.2",
+-      "resolved": "https://registry.npmjs.org/iconv-lite/-/iconv-lite-0.7.2.tgz",
+-      "integrity": "sha512-im9DjEDQ55s9fL4EYzOAv0yMqmMBSZp6G0VvFyTMPKWxiSBHUj9NW/qqLmXUwXrrM7AvqSlTCfvqRb0cM8yYqw==",
++      "version": "0.7.3",
++      "resolved": "https://registry.npmjs.org/iconv-lite/-/iconv-lite-0.7.3.tgz",
++      "integrity": "sha512-IKXpvIzjnC9XTAUbVBcMfGS0EPaIXtW6v+zr+RRp+hqULEpo0owZax6wyRwPOJbWbzjYspQwusTsfVr0ifh4uQ==",
+       "license": "MIT",
+       "dependencies": {
+         "safer-buffer": ">= 2.1.2 < 3.0.0"
+@@ -1805,19 +1891,16 @@
+       }
+     },
+     "node_modules/minimatch": {
+-      "version": "10.2.4",
+-      "resolved": "https://registry.npmjs.org/minimatch/-/minimatch-10.2.4.tgz",
+-      "integrity": "sha512-oRjTw/97aTBN0RHbYCdtF1MQfvusSIBQM0IZEgzl6426+8jSC0nF1a/GmnVLpfB9yyr6g6FTqWqiZVbxrtaCIg==",
++      "version": "3.1.5",
++      "resolved": "https://registry.npmjs.org/minimatch/-/minimatch-3.1.5.tgz",
++      "integrity": "sha512-VgjWUsnnT6n+NUk6eZq77zeFdpW2LWDzP6zFGrCbHXiYNul5Dzqk2HHQ5uFH2DNW5Xbp8+jVzaeNt94ssEEl4w==",
+       "dev": true,
+-      "license": "BlueOak-1.0.0",
++      "license": "ISC",
+       "dependencies": {
+-        "brace-expansion": "^5.0.2"
++        "brace-expansion": "^1.1.7"
+       },
+       "engines": {
+-        "node": "18 || 20 || >=22"
+-      },
+-      "funding": {
+-        "url": "https://github.com/sponsors/isaacs"
++        "node": "*"
+       }
+     },
+     "node_modules/ms": {
+@@ -1827,14 +1910,13 @@
+       "license": "MIT"
+     },
+     "node_modules/multer": {
+-      "version": "2.1.1",
+-      "resolved": "https://registry.npmjs.org/multer/-/multer-2.1.1.tgz",
+-      "integrity": "sha512-mo+QTzKlx8R7E5ylSXxWzGoXoZbOsRMpyitcht8By2KHvMbf3tjwosZ/Mu/XYU6UuJ3VZnODIrak5ZrPiPyB6A==",
++      "version": "2.5.0",
++      "resolved": "https://registry.npmjs.org/multer/-/multer-2.5.0.tgz",
++      "integrity": "sha512-BsqOzYGVq49JcW2IzoSAxeKYRevb+dGGPPWleOR8Lrlk4igwxu1/9pwSXlByhCb7MVZDrNJFC0IBP5/O5nLYRw==",
+       "license": "MIT",
+       "dependencies": {
+         "append-field": "^1.0.0",
+         "busboy": "^1.6.0",
+-        "concat-stream": "^2.0.0",
+         "type-is": "^1.6.18"
+       },
+       "engines": {
+@@ -1927,25 +2009,25 @@
+       }
+     },
+     "node_modules/nodemailer": {
+-      "version": "8.0.2",
+-      "resolved": "https://registry.npmjs.org/nodemailer/-/nodemailer-8.0.2.tgz",
+-      "integrity": "sha512-zbj002pZAIkWQFxyAaqoxvn+zoIwRnS40hgjqTXudKOOJkiFFgBeNqjgD3/YCR12sZnrghWYBY+yP1ZucdDRpw==",
++      "version": "10.6.1",
++      "resolved": "https://registry.npmjs.org/nodemailer/-/nodemailer-10.6.1.tgz",
++      "integrity": "sha512-d7kfFfS/tR4Aca+SBvRaQ+MXKNv7d2JiRe5TxaRcFT/kYMh4GGPnW9aKksTIEvyEbA7d/7HYWE4YPDEHxzJj/g==",
+       "license": "MIT-0",
+       "engines": {
+-        "node": ">=6.0.0"
++        "node": ">=20.0.0"
+       }
+     },
+     "node_modules/nodemon": {
+-      "version": "3.1.14",
+-      "resolved": "https://registry.npmjs.org/nodemon/-/nodemon-3.1.14.tgz",
+-      "integrity": "sha512-jakjZi93UtB3jHMWsXL68FXSAosbLfY0In5gtKq3niLSkrWznrVBzXFNOEMJUfc9+Ke7SHWoAZsiMkNP3vq6Jw==",
++      "version": "3.1.11",
++      "resolved": "https://registry.npmjs.org/nodemon/-/nodemon-3.1.11.tgz",
++      "integrity": "sha512-is96t8F/1//UHAjNPHpbsNY46ELPpftGUoSVNXwUfMk/qdjSylYrWSu1XavVTBOn526kFiOR733ATgNBCQyH0g==",
+       "dev": true,
+       "license": "MIT",
+       "dependencies": {
+         "chokidar": "^3.5.2",
+         "debug": "^4",
+         "ignore-by-default": "^1.0.1",
+-        "minimatch": "^10.2.1",
++        "minimatch": "^3.1.2",
+         "pstree.remy": "^1.1.8",
+         "semver": "^7.5.3",
+         "simple-update-notifier": "^2.0.0",
+@@ -2022,9 +2104,9 @@
+       }
+     },
+     "node_modules/object-inspect": {
+-      "version": "1.13.4",
+-      "resolved": "https://registry.npmjs.org/object-inspect/-/object-inspect-1.13.4.tgz",
+-      "integrity": "sha512-W67iLl4J2EXEGTbfeHCffrjDfitvLANg0UlX3wFUUSTx92KXRFegMHUVgSqE+wvhAbi4WqjGg9czysTV2Epbew==",
++      "version": "1.14.0",
++      "resolved": "https://registry.npmjs.org/object-inspect/-/object-inspect-1.14.0.tgz",
++      "integrity": "sha512-IVgHNlp/jwQX271+Xzoq9LZNTWXxZK+cEOrGBOBxXNbn7fapnZ+Ts6TVMgNOuAezwG2wdtnMX97tTPK6VEnuOQ==",
+       "license": "MIT",
+       "engines": {
+         "node": ">= 0.4"
+@@ -2069,9 +2151,9 @@
+       }
+     },
+     "node_modules/path-to-regexp": {
+-      "version": "8.3.0",
+-      "resolved": "https://registry.npmjs.org/path-to-regexp/-/path-to-regexp-8.3.0.tgz",
+-      "integrity": "sha512-7jdwVIRtsP8MYpdXSwOS0YdD0Du+qOoF/AEPIt88PcCFrZCzx41oxku1jD88hZBwbNUIEfpqvuhjFaMAqMTWnA==",
++      "version": "8.4.2",
++      "resolved": "https://registry.npmjs.org/path-to-regexp/-/path-to-regexp-8.4.2.tgz",
++      "integrity": "sha512-qRcuIdP69NPm4qbACK+aDogI5CBDMi1jKe0ry5rSQJz8JVLsC7jV8XpiJjGRLLol3N+R5ihGYcrPLTno6pAdBA==",
+       "license": "MIT",
+       "funding": {
+         "type": "opencollective",
+@@ -2093,9 +2175,9 @@
+       }
+     },
+     "node_modules/picomatch": {
+-      "version": "2.3.1",
+-      "resolved": "https://registry.npmjs.org/picomatch/-/picomatch-2.3.1.tgz",
+-      "integrity": "sha512-JU3teHTNjmE2VCGFzuY8EXzCDVwEqB2a8fsIvwaStHhAWJEeVd1o1QD80CU6+ZdEXXSLbSsuLwJjkCBWqRQUVA==",
++      "version": "2.3.2",
++      "resolved": "https://registry.npmjs.org/picomatch/-/picomatch-2.3.2.tgz",
++      "integrity": "sha512-V7+vQEJ06Z+c5tSye8S+nHUfI51xoXIXjHQ99cQtKUkQqqO1kO/KCJUfZXuB47h/YBlDhah2H3hdUGXn8ie0oA==",
+       "dev": true,
+       "license": "MIT",
+       "engines": {
+@@ -2131,9 +2213,9 @@
+       }
+     },
+     "node_modules/proxy-addr": {
+-      "version": "2.0.7",
+-      "resolved": "https://registry.npmjs.org/proxy-addr/-/proxy-addr-2.0.7.tgz",
+-      "integrity": "sha512-llQsMLSUDUPT44jdrU/O37qlnifitDP+ZwrmmZcoSKyLKvtZxpyV0n2/bD/N4tBAAZ/gJEdZU7KMraoK1+XYAg==",
++      "version": "2.0.8",
++      "resolved": "https://registry.npmjs.org/proxy-addr/-/proxy-addr-2.0.8.tgz",
++      "integrity": "sha512-5nnx0yGyVUcY6t9RnWcARWtwT9F1D8O9rt08htPvnd49W1IgZtmLkhu9WfMzQj1cFxjHIO6connUNVW5k7AVyQ==",
+       "license": "MIT",
+       "dependencies": {
+         "forwarded": "0.2.0",
+@@ -2141,6 +2223,10 @@
+       },
+       "engines": {
+         "node": ">= 0.10"
++      },
++      "funding": {
++        "type": "opencollective",
++        "url": "https://opencollective.com/express"
+       }
+     },
+     "node_modules/proxy-from-env": {
+@@ -2160,12 +2246,13 @@
+       "license": "MIT"
+     },
+     "node_modules/qs": {
+-      "version": "6.15.0",
+-      "resolved": "https://registry.npmjs.org/qs/-/qs-6.15.0.tgz",
+-      "integrity": "sha512-mAZTtNCeetKMH+pSjrb76NAM8V9a05I9aBZOHztWy/UqcJdQYNsf59vrRKWnojAT9Y+GbIvoTBC++CPHqpDBhQ==",
++      "version": "6.17.1",
++      "resolved": "https://registry.npmjs.org/qs/-/qs-6.17.1.tgz",
++      "integrity": "sha512-jd3COkaKVgGUW+ZHyEHCG9bH7RoaaiWuMgzsIBjUMVjLAaWGWpoUAVwljVvBHxRu/2qEHnadLGZrkutYUBPQJA==",
+       "license": "BSD-3-Clause",
+       "dependencies": {
+-        "side-channel": "^1.1.0"
++        "es-define-property": "^1.0.1",
++        "side-channel": "^1.1.1"
+       },
+       "engines": {
+         "node": ">=0.6"
+@@ -2198,20 +2285,6 @@
+         "node": ">= 0.10"
+       }
+     },
+-    "node_modules/readable-stream": {
+-      "version": "3.6.2",
+-      "resolved": "https://registry.npmjs.org/readable-stream/-/readable-stream-3.6.2.tgz",
+-      "integrity": "sha512-9u/sniCrY3D5WdsERHzHE4G2YCXqoG5FTHUiCC4SIbr6XcLZBY05ya9EKjYek9O5xOAwjGq+1JdGBAS7Q9ScoA==",
+-      "license": "MIT",
+-      "dependencies": {
+-        "inherits": "^2.0.3",
+-        "string_decoder": "^1.1.1",
+-        "util-deprecate": "^1.0.1"
+-      },
+-      "engines": {
+-        "node": ">= 6"
+-      }
+-    },
+     "node_modules/restructure": {
+       "version": "3.0.2",
+       "resolved": "https://registry.npmjs.org/restructure/-/restructure-3.0.2.tgz",
+@@ -2260,9 +2333,9 @@
+       "license": "MIT"
+     },
+     "node_modules/semver": {
+-      "version": "7.7.4",
+-      "resolved": "https://registry.npmjs.org/semver/-/semver-7.7.4.tgz",
+-      "integrity": "sha512-vFKC2IEtQnVhpT78h1Yp8wzwrf8CM+MzKMHGJZfBtzhZNycRFnXsHk6E5TxIkkMsgNS7mdX3AGB7x2QM2di4lA==",
++      "version": "7.8.6",
++      "resolved": "https://registry.npmjs.org/semver/-/semver-7.8.6.tgz",
++      "integrity": "sha512-9lpSSU4Mly3mrtruwLs1eLK6+gzbzqeBFwRNjIjE+9LuDpWdYctrQlQ3ej1Ilgi7gknpsTRnPoLP8DpCHqHIJw==",
+       "license": "ISC",
+       "bin": {
+         "semver": "bin/semver.js"
+@@ -2323,58 +2396,63 @@
+       "license": "ISC"
+     },
+     "node_modules/sharp": {
+-      "version": "0.34.5",
+-      "resolved": "https://registry.npmjs.org/sharp/-/sharp-0.34.5.tgz",
+-      "integrity": "sha512-Ou9I5Ft9WNcCbXrU9cMgPBcCK8LiwLqcbywW3t4oDV37n1pzpuNLsYiAV8eODnjbtQlSDwZ2cUEeQz4E54Hltg==",
+-      "hasInstallScript": true,
++      "version": "0.35.5",
++      "resolved": "https://registry.npmjs.org/sharp/-/sharp-0.35.5.tgz",
++      "integrity": "sha512-Ywn4OnzGukp7CDMrp08RQ50YKmuwG47brZgIVPTvBaaAfQlRlygrRqSrxdCiL9M+LlzLBiJ68IR1QqvzHyjC7g==",
+       "license": "Apache-2.0",
+       "dependencies": {
+-        "@img/colour": "^1.0.0",
++        "@img/colour": "^1.1.0",
+         "detect-libc": "^2.1.2",
+-        "semver": "^7.7.3"
++        "semver": "^7.8.5"
+       },
+       "engines": {
+-        "node": "^18.17.0 || ^20.3.0 || >=21.0.0"
++        "node": ">=20.9.0"
+       },
+       "funding": {
+         "url": "https://opencollective.com/libvips"
+       },
+       "optionalDependencies": {
+-        "@img/sharp-darwin-arm64": "0.34.5",
+-        "@img/sharp-darwin-x64": "0.34.5",
+-        "@img/sharp-libvips-darwin-arm64": "1.2.4",
+-        "@img/sharp-libvips-darwin-x64": "1.2.4",
+-        "@img/sharp-libvips-linux-arm": "1.2.4",
+-        "@img/sharp-libvips-linux-arm64": "1.2.4",
+-        "@img/sharp-libvips-linux-ppc64": "1.2.4",
+-        "@img/sharp-libvips-linux-riscv64": "1.2.4",
+-        "@img/sharp-libvips-linux-s390x": "1.2.4",
+-        "@img/sharp-libvips-linux-x64": "1.2.4",
+-        "@img/sharp-libvips-linuxmusl-arm64": "1.2.4",
+-        "@img/sharp-libvips-linuxmusl-x64": "1.2.4",
+-        "@img/sharp-linux-arm": "0.34.5",
+-        "@img/sharp-linux-arm64": "0.34.5",
+-        "@img/sharp-linux-ppc64": "0.34.5",
+-        "@img/sharp-linux-riscv64": "0.34.5",
+-        "@img/sharp-linux-s390x": "0.34.5",
+-        "@img/sharp-linux-x64": "0.34.5",
+-        "@img/sharp-linuxmusl-arm64": "0.34.5",
+-        "@img/sharp-linuxmusl-x64": "0.34.5",
+-        "@img/sharp-wasm32": "0.34.5",
+-        "@img/sharp-win32-arm64": "0.34.5",
+-        "@img/sharp-win32-ia32": "0.34.5",
+-        "@img/sharp-win32-x64": "0.34.5"
++        "@img/sharp-darwin-arm64": "0.35.5",
++        "@img/sharp-darwin-x64": "0.35.5",
++        "@img/sharp-freebsd-wasm32": "0.35.5",
++        "@img/sharp-libvips-darwin-arm64": "1.3.4",
++        "@img/sharp-libvips-darwin-x64": "1.3.4",
++        "@img/sharp-libvips-linux-arm": "1.3.4",
++        "@img/sharp-libvips-linux-arm64": "1.3.4",
++        "@img/sharp-libvips-linux-ppc64": "1.3.4",
++        "@img/sharp-libvips-linux-riscv64": "1.3.4",
++        "@img/sharp-libvips-linux-s390x": "1.3.4",
++        "@img/sharp-libvips-linux-x64": "1.3.4",
++        "@img/sharp-libvips-linuxmusl-arm64": "1.3.4",
++        "@img/sharp-libvips-linuxmusl-x64": "1.3.4",
++        "@img/sharp-linux-arm": "0.35.5",
++        "@img/sharp-linux-arm64": "0.35.5",
++        "@img/sharp-linux-ppc64": "0.35.5",
++        "@img/sharp-linux-riscv64": "0.35.5",
++        "@img/sharp-linux-s390x": "0.35.5",
++        "@img/sharp-linux-x64": "0.35.5",
++        "@img/sharp-linuxmusl-arm64": "0.35.5",
++        "@img/sharp-linuxmusl-x64": "0.35.5",
++        "@img/sharp-webcontainers-wasm32": "0.35.5",
++        "@img/sharp-win32-arm64": "0.35.5",
++        "@img/sharp-win32-ia32": "0.35.5",
++        "@img/sharp-win32-x64": "0.35.5"
++      },
++      "peerDependenciesMeta": {
++        "@types/node": {
++          "optional": true
++        }
+       }
+     },
+     "node_modules/side-channel": {
+-      "version": "1.1.0",
+-      "resolved": "https://registry.npmjs.org/side-channel/-/side-channel-1.1.0.tgz",
+-      "integrity": "sha512-ZX99e6tRweoUXqR+VBrslhda51Nh5MTQwou5tnUDgbtyM0dBgmhEDtWGP/xbKn6hqfPRHujUNwz5fy/wbbhnpw==",
++      "version": "1.1.1",
++      "resolved": "https://registry.npmjs.org/side-channel/-/side-channel-1.1.1.tgz",
++      "integrity": "sha512-6x6dK6zJdpTzF4sQeNYxwtvBzf6Eg4GtlesS94HOvTudUeyK2WXAaIfmDgsyslYrRBeFIlsi54AYsFGUuhmvrQ==",
+       "license": "MIT",
+       "dependencies": {
+         "es-errors": "^1.3.0",
+-        "object-inspect": "^1.13.3",
+-        "side-channel-list": "^1.0.0",
++        "object-inspect": "^1.13.4",
++        "side-channel-list": "^1.0.1",
+         "side-channel-map": "^1.0.1",
+         "side-channel-weakmap": "^1.0.2"
+       },
+@@ -2386,13 +2464,13 @@
+       }
+     },
+     "node_modules/side-channel-list": {
+-      "version": "1.0.0",
+-      "resolved": "https://registry.npmjs.org/side-channel-list/-/side-channel-list-1.0.0.tgz",
+-      "integrity": "sha512-FCLHtRD/gnpCiCHEiJLOwdmFP+wzCmDEkc9y7NsYxeF4u7Btsn1ZuwgwJGxImImHicJArLP4R0yX4c2KCrMrTA==",
++      "version": "1.0.1",
++      "resolved": "https://registry.npmjs.org/side-channel-list/-/side-channel-list-1.0.1.tgz",
++      "integrity": "sha512-mjn/0bi/oUURjc5Xl7IaWi/OJJJumuoJFQJfDDyO46+hBWsfaVM65TBHq2eoZBhzl9EchxOijpkbRC8SVBQU0w==",
+       "license": "MIT",
+       "dependencies": {
+         "es-errors": "^1.3.0",
+-        "object-inspect": "^1.13.3"
++        "object-inspect": "^1.13.4"
+       },
+       "engines": {
+         "node": ">= 0.4"
+@@ -2470,19 +2548,19 @@
+       }
+     },
+     "node_modules/socket.io-adapter": {
+-      "version": "2.5.6",
+-      "resolved": "https://registry.npmjs.org/socket.io-adapter/-/socket.io-adapter-2.5.6.tgz",
+-      "integrity": "sha512-DkkO/dz7MGln0dHn5bmN3pPy+JmywNICWrJqVWiVOyvXjWQFIv9c2h24JrQLLFJ2aQVQf/Cvl1vblnd4r2apLQ==",
++      "version": "2.5.9",
++      "resolved": "https://registry.npmjs.org/socket.io-adapter/-/socket.io-adapter-2.5.9.tgz",
++      "integrity": "sha512-SEuWaysGaqPiGApa6nvwVI5u/7k0U6em6XF4A4RbR8GY1kZUbNDAzw6v9HK/cZ0UQFcdayjLjBYxKjaB1/yPQw==",
+       "license": "MIT",
+       "dependencies": {
+         "debug": "~4.4.1",
+-        "ws": "~8.18.3"
++        "ws": "^8.23.0"
+       }
+     },
+     "node_modules/socket.io-parser": {
+-      "version": "4.2.5",
+-      "resolved": "https://registry.npmjs.org/socket.io-parser/-/socket.io-parser-4.2.5.tgz",
+-      "integrity": "sha512-bPMmpy/5WWKHea5Y/jYAP6k74A+hvmRCQaJuJB6I/ML5JZq/KfNieUVo/3Mh7SAqn7TyFdIo6wqYHInG1MU1bQ==",
++      "version": "4.2.7",
++      "resolved": "https://registry.npmjs.org/socket.io-parser/-/socket.io-parser-4.2.7.tgz",
++      "integrity": "sha512-IH/iSeO9T6gz1KkFleGDWkG9N3dl4jXVYUtMhIqH10Md0ttMer8nUNWiP1DKuNrybD2xBrixLJdCC9J6ECoYkg==",
+       "license": "MIT",
+       "dependencies": {
+         "@socket.io/component-emitter": "~3.1.0",
+@@ -2552,15 +2630,6 @@
+         "node": ">=10.0.0"
+       }
+     },
+-    "node_modules/string_decoder": {
+-      "version": "1.3.0",
+-      "resolved": "https://registry.npmjs.org/string_decoder/-/string_decoder-1.3.0.tgz",
+-      "integrity": "sha512-hkRX8U1WjJFd8LsDJ2yQ/wWWxaopEsABU1XfkM8A+j0+85JAGppt16cr1Whg6KIbb4okU6Mql6BOj+uup/wKeA==",
+-      "license": "MIT",
+-      "dependencies": {
+-        "safe-buffer": "~5.2.0"
+-      }
+-    },
+     "node_modules/supports-color": {
+       "version": "5.5.0",
+       "resolved": "https://registry.npmjs.org/supports-color/-/supports-color-5.5.0.tgz",
+@@ -2612,31 +2681,42 @@
+       }
+     },
+     "node_modules/tslib": {
+-      "version": "2.8.1",
+-      "resolved": "https://registry.npmjs.org/tslib/-/tslib-2.8.1.tgz",
+-      "integrity": "sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w==",
++      "version": "2.9.1",
++      "resolved": "https://registry.npmjs.org/tslib/-/tslib-2.9.1.tgz",
++      "integrity": "sha512-a4Ux9VKuIMHsOS7ENbEq6hK2ZGYIT27Rtl0E4eD9KqwxhKiQeMZE/9xb3IdYwWaSOyIBQLExhQgXDTYoiCxnWA==",
+       "license": "0BSD",
+       "optional": true
+     },
+     "node_modules/type-is": {
+-      "version": "2.0.1",
+-      "resolved": "https://registry.npmjs.org/type-is/-/type-is-2.0.1.tgz",
+-      "integrity": "sha512-OZs6gsjF4vMp32qrCbiVSkrFmXtG/AZhY3t0iAMrMBiAZyV9oALtXO8hsrHbMXF9x6L3grlFuwW2oAz7cav+Gw==",
++      "version": "2.1.0",
++      "resolved": "https://registry.npmjs.org/type-is/-/type-is-2.1.0.tgz",
++      "integrity": "sha512-faYHw0anBbc/kWF3zFTEnxSFOAGUX9GFbOBthvDdLsIlEoWOFOtS0zgCiQYwIskL9iGXZL3kAXD8OoZ4GmMATA==",
+       "license": "MIT",
+       "dependencies": {
+-        "content-type": "^1.0.5",
++        "content-type": "^2.0.0",
+         "media-typer": "^1.1.0",
+         "mime-types": "^3.0.0"
+       },
+       "engines": {
+-        "node": ">= 0.6"
++        "node": ">= 18"
++      },
++      "funding": {
++        "type": "opencollective",
++        "url": "https://opencollective.com/express"
+       }
+     },
+-    "node_modules/typedarray": {
+-      "version": "0.0.6",
+-      "resolved": "https://registry.npmjs.org/typedarray/-/typedarray-0.0.6.tgz",
+-      "integrity": "sha512-/aCDEGatGvZ2BIk+HmLf4ifCJFwvKFNb9/JeZPMulfgFracn9QFcAf5GO8B/mweUjSoblS5In0cWhqpfs/5PQA==",
+-      "license": "MIT"
++    "node_modules/type-is/node_modules/content-type": {
++      "version": "2.1.0",
++      "resolved": "https://registry.npmjs.org/content-type/-/content-type-2.1.0.tgz",
++      "integrity": "sha512-mj7UPXE0jaqaOsukNZRUEfEi2AcL7C/vwmwcHV0O97eO1E1pxBZuyjlZrx5seTaNBg1U6+o35wpa35Qfcc+7ag==",
++      "license": "MIT",
++      "engines": {
++        "node": ">=18"
++      },
++      "funding": {
++        "type": "opencollective",
++        "url": "https://opencollective.com/express"
++      }
+     },
+     "node_modules/undefsafe": {
+       "version": "2.0.5",
+@@ -2678,12 +2758,6 @@
+         "node": ">= 0.8"
+       }
+     },
+-    "node_modules/util-deprecate": {
+-      "version": "1.0.2",
+-      "resolved": "https://registry.npmjs.org/util-deprecate/-/util-deprecate-1.0.2.tgz",
+-      "integrity": "sha512-EPD5q1uXyFxJpCrLnCc1nHnq3gOa6DZBocAIiI2TaSCA7VCJ1UJDMagCzIkXNsUYfD1daK//LTEQ8xiIbrHtcw==",
+-      "license": "MIT"
+-    },
+     "node_modules/vary": {
+       "version": "1.1.2",
+       "resolved": "https://registry.npmjs.org/vary/-/vary-1.1.2.tgz",
+@@ -2700,9 +2774,9 @@
+       "license": "ISC"
+     },
+     "node_modules/ws": {
+-      "version": "8.18.3",
+-      "resolved": "https://registry.npmjs.org/ws/-/ws-8.18.3.tgz",
+-      "integrity": "sha512-PEIGCY5tSlUt50cqyMXfCzX+oOPqN0vuGqWzbcJ2xvnkzkq46oOpz7dQaTDBdfICb4N14+GARUDw2XV2N4tvzg==",
++      "version": "8.23.0",
++      "resolved": "https://registry.npmjs.org/ws/-/ws-8.23.0.tgz",
++      "integrity": "sha512-wCkmX8QMOrKjgO8HW2WyDbTSGeqkocxgDzS9iR79rEAexty6/2qzilx3Ag8Tqf9ykop3irLKle0MtVn5qjVnoQ==",
+       "license": "MIT",
+       "engines": {
+         "node": ">=10.0.0"
+@@ -2721,9 +2795,9 @@
+       }
+     },
+     "node_modules/zod": {
+-      "version": "3.25.76",
+-      "resolved": "https://registry.npmjs.org/zod/-/zod-3.25.76.tgz",
+-      "integrity": "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==",
++      "version": "4.6.7",
++      "resolved": "https://registry.npmjs.org/zod/-/zod-4.6.7.tgz",
++      "integrity": "sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg==",
+       "license": "MIT",
+       "funding": {
+         "url": "https://github.com/sponsors/colinhacks"
+diff --git a/backend/package.json b/backend/package.json
+index 7c724ef..56e139d 100644
+--- a/backend/package.json
++++ b/backend/package.json
+@@ -20,11 +20,11 @@
+     "jsonwebtoken": "^9.0.3",
+     "multer": "^2.1.1",
+     "node-cron": "^4.2.1",
+-    "nodemailer": "^8.0.2",
++    "nodemailer": "^10.6.1",
+     "pdfkit": "^0.20.2",
+-    "sharp": "^0.34.5",
++    "sharp": "^0.35.5",
+     "socket.io": "^4.8.3",
+-    "zod": "^3.23.8"
++    "zod": "^4.6.7"
+   },
+   "devDependencies": {
+     "nodemon": "^3.1.9",
+diff --git a/backend/src/app.js b/backend/src/app.js
+index 8680bf1..f044486 100644
+--- a/backend/src/app.js
++++ b/backend/src/app.js
+@@ -33,8 +33,26 @@ app.use(express.urlencoded({ limit: '10mb', extended: true }));
+ // Routes
+ app.use('/api', routes);
+ 
+-// Serve Static files for uploads
+-app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')));
++// Serve uploaded files (screenshots/videos) only with a valid short-lived signature.
++// Private monitoring media must never be publicly accessible.
++const { verifyFileSignature } = require('./utils/fileSignature');
++const UPLOADS_ROOT = path.join(__dirname, '../public/uploads');
++app.use('/uploads', (req, res) => {
++    const canonicalPath = `/uploads${decodeURIComponent(req.path)}`;
++    if (!verifyFileSignature(canonicalPath, req.query.exp, req.query.sig)) {
++        return res.status(403).json({ success: false, message: 'Forbidden' });
++    }
++    const safeRelative = path.normalize(req.path).replace(/^([/\\])+/, '');
++    const absolutePath = path.join(UPLOADS_ROOT, safeRelative);
++    if (!absolutePath.startsWith(UPLOADS_ROOT)) {
++        return res.status(403).json({ success: false, message: 'Forbidden' });
++    }
++    return res.sendFile(absolutePath, (err) => {
++        if (err && !res.headersSent) {
++            res.status(err.statusCode || 404).json({ success: false, message: 'File not found' });
++        }
++    });
++});
+ app.use('/agent', express.static(path.join(__dirname, '../public/agent')));
+ 
+ // Redirect friendly agent setup URLs directly to agent installer download
+diff --git a/backend/src/middlewares/error.middleware.js b/backend/src/middlewares/error.middleware.js
+index c8d61fe..3706c9a 100644
+--- a/backend/src/middlewares/error.middleware.js
++++ b/backend/src/middlewares/error.middleware.js
+@@ -15,7 +15,8 @@ const errorMiddleware = (err, req, res, next) => {
+ 
+     // Zod validation error
+     if (err.name === 'ZodError') {
+-        const message = err.errors.map(e => {
++        const issues = err.issues || err.errors || [];
++        const message = issues.map(e => {
+             const path = e.path.join(': ');
+             if (e.code === 'invalid_string' && e.validation === 'email') {
+                 return `Invalid email format`;
+@@ -34,9 +35,11 @@ const errorMiddleware = (err, req, res, next) => {
+         return errorResponse(res, 'Your token has expired! Please log in again.', 401);
+     }
+ 
+-    // Default error
++    // Default error — never leak internals to the client
+     const statusCode = err.statusCode || 500;
+-    const message = err.message || 'Internal Server Error';
++    const message = statusCode >= 500
++        ? 'Internal server error. Please try again later.'
++        : (err.message || 'Request failed');
+ 
+     errorResponse(res, message, statusCode);
+ };
+diff --git a/backend/src/modules/agent/agent.controller.js b/backend/src/modules/agent/agent.controller.js
+index b626839..ed5d331 100644
+--- a/backend/src/modules/agent/agent.controller.js
++++ b/backend/src/modules/agent/agent.controller.js
+@@ -8,6 +8,7 @@ const { getIO, updateSessionStatus } = require('../../socket/server');
+ const { getOrganizationId } = require('../../utils/orgId');
+ const { generateAgentToken, verifyAgentToken } = require('../../utils/agentToken');
+ const { verifyToken } = require('../../utils/jwt');
++const { canAccessEmployeeData } = require('../../utils/accessControl');
+ 
+ const invitationService = require('../auth/invitation.service');
+ const { sendIdleAlertEmail } = require('../../utils/email.service');
+@@ -68,27 +69,29 @@ const register = async (req, res) => {
+             const existingEmployee = invitedEmployee;
+ 
+             console.log(`Creating user record for employee: ${existingEmployee.fullName}`);
+-            // Create User linked to the employee
++            // Create User + activate Employee atomically — no partial records on failure
+             const hashedPassword = await bcrypt.hash(password, 10);
+-            user = await prisma.user.create({
+-                data: {
+-                    email,
+-                    password: hashedPassword,
+-                    role: 'EMPLOYEE',
+-                    employeeId: existingEmployee.id
+-                },
+-                include: { employee: true }
+-            });
++            const [createdUser] = await prisma.$transaction([
++                prisma.user.create({
++                    data: {
++                        email,
++                        password: hashedPassword,
++                        role: 'EMPLOYEE',
++                        employeeId: existingEmployee.id
++                    },
++                    include: { employee: true }
++                }),
++                prisma.employee.update({
++                    where: { id: existingEmployee.id },
++                    data: {
++                        fullName: name || existingEmployee.fullName,
++                        ...(existingEmployee.status === 'INVITED' ? { status: 'ACTIVE' } : {}),
++                    },
++                })
++            ]);
++            user = createdUser;
+ 
+             targetEmployeeId = existingEmployee.id;
+-
+-            await prisma.employee.update({
+-                where: { id: existingEmployee.id },
+-                data: {
+-                    fullName: name || existingEmployee.fullName,
+-                    ...(existingEmployee.status === 'INVITED' ? { status: 'ACTIVE' } : {}),
+-                },
+-            });
+         } else {
+             // User exists, verify password
+             const isPasswordValid = await bcrypt.compare(password, user.password);
+@@ -108,21 +111,32 @@ const register = async (req, res) => {
+                 }
+                 if (!existingEmployee) {
+                     const org = await prisma.organization.findFirst();
+-                    existingEmployee = await prisma.employee.create({
+-                        data: {
+-                            fullName: name || email.split('@')[0],
+-                            email,
+-                            organizationId: org ? org.id : 1,
+-                            role: 'EMPLOYEE',
+-                            status: 'ACTIVE'
+-                        }
++                    if (!org) {
++                        return errorResponse(res, 'No organization found in system. Please setup organization first.', 400);
++                    }
++                    // Create Employee + link User atomically — no partial records on failure
++                    existingEmployee = await prisma.$transaction(async (tx) => {
++                        const emp = await tx.employee.create({
++                            data: {
++                                fullName: name || email.split('@')[0],
++                                email,
++                                organizationId: org.id,
++                                role: 'EMPLOYEE',
++                                status: 'ACTIVE'
++                            }
++                        });
++                        await tx.user.update({
++                            where: { id: user.id },
++                            data: { employeeId: emp.id }
++                        });
++                        return emp;
++                    });
++                } else {
++                    await prisma.user.update({
++                        where: { id: user.id },
++                        data: { employeeId: existingEmployee.id }
+                     });
+                 }
+-
+-                await prisma.user.update({
+-                    where: { id: user.id },
+-                    data: { employeeId: existingEmployee.id }
+-                });
+                 targetEmployeeId = existingEmployee.id;
+             } else {
+                 targetEmployeeId = user.employee.id;
+@@ -278,9 +292,10 @@ const logActivity = async (req, res) => {
+ 
+             // 1. Notify about new screenshot (with taskId & violation metadata)
+             if (logResult?.screenshotSaved && logResult?.finalScreenshotUrl) {
++                const { signLocalUrl } = require('../../utils/fileSignature');
+                 io.to(room).emit('screenshot:new', {
+                     employeeId,
+-                    imageUrl: logResult.finalScreenshotUrl,
++                    imageUrl: signLocalUrl(logResult.finalScreenshotUrl),
+                     capturedAt: data.timestamp || new Date(),
+                     productivity: data.violation ? 'UNPRODUCTIVE' : (logResult?.productivity || 'NEUTRAL'),
+                     employeeName: agent.employee.fullName,
+@@ -380,6 +395,9 @@ const downloadAgent = async (req, res) => {
+ const getStatus = async (req, res) => {
+     try {
+         const employeeId = req.params.employeeId || req.user.employeeId;
++        if (!(await canAccessEmployeeData(req, employeeId))) {
++            return errorResponse(res, 'Forbidden', 403);
++        }
+         const status = await agentService.getAgentStatus(employeeId);
+ 
+         if (status.status === 'missing') {
+@@ -950,6 +968,9 @@ const handleIdleResponse = async (req, res) => {
+ const getIdleSessions = async (req, res) => {
+     try {
+         const { employeeId } = req.params;
++        if (!(await canAccessEmployeeData(req, employeeId))) {
++            return errorResponse(res, 'Forbidden', 403);
++        }
+         const sessions = await prisma.idleSession.findMany({
+             where: { employeeId },
+             orderBy: { createdAt: 'desc' },
+@@ -981,6 +1002,9 @@ const getIdleSessions = async (req, res) => {
+ const getActivitySummary = async (req, res) => {
+     try {
+         const { employeeId } = req.params;
++        if (!(await canAccessEmployeeData(req, employeeId))) {
++            return errorResponse(res, 'Forbidden', 403);
++        }
+         const todayStart = new Date();
+         todayStart.setHours(0, 0, 0, 0);
+ 
+diff --git a/backend/src/modules/dashboard/dashboard.service.js b/backend/src/modules/dashboard/dashboard.service.js
+index 6dea2e1..089f98d 100644
+--- a/backend/src/modules/dashboard/dashboard.service.js
++++ b/backend/src/modules/dashboard/dashboard.service.js
+@@ -36,7 +36,12 @@ async function calculateMetrics(organizationId, employeeId = null, teamId = null
+         whereClause.employee = { ...(whereClause.employee || {}), role };
+     }
+ 
+-    const logs = await prisma.activityLog.findMany({ where: whereClause });
++    // DB-level aggregation instead of loading every log row into memory
++    const groupedLogs = await prisma.activityLog.groupBy({
++        by: ['activityType', 'productivity'],
++        where: whereClause,
++        _sum: { duration: true }
++    });
+ 
+     let activeTime = 0;
+     let idleTime = 0;
+@@ -44,13 +49,14 @@ async function calculateMetrics(organizationId, employeeId = null, teamId = null
+     let unproductiveTime = 0;
+     let neutralTime = 0;
+ 
+-    logs.forEach(log => {
+-        if (log.activityType === 'ACTIVE') activeTime += log.duration;
+-        if (log.activityType === 'IDLE') idleTime += log.duration;
++    groupedLogs.forEach(g => {
++        const duration = g._sum.duration || 0;
++        if (g.activityType === 'ACTIVE') activeTime += duration;
++        if (g.activityType === 'IDLE') idleTime += duration;
+ 
+-        if (log.productivity === 'PRODUCTIVE') productiveTime += log.duration;
+-        else if (log.productivity === 'UNPRODUCTIVE') unproductiveTime += log.duration;
+-        else if (log.productivity === 'NEUTRAL') neutralTime += log.duration;
++        if (g.productivity === 'PRODUCTIVE') productiveTime += duration;
++        else if (g.productivity === 'UNPRODUCTIVE') unproductiveTime += duration;
++        else if (g.productivity === 'NEUTRAL') neutralTime += duration;
+     });
+ 
+     const manualWhere = { organizationId, startTime: dateFilter };
+@@ -59,8 +65,8 @@ async function calculateMetrics(organizationId, employeeId = null, teamId = null
+     if (role) {
+         manualWhere.employee = { ...(manualWhere.employee || {}), role };
+     }
+-    const manualLogs = await prisma.manualTime.findMany({ where: manualWhere });
+-    const manualTime = manualLogs.reduce((acc, log) => acc + log.duration, 0);
++    const manualAgg = await prisma.manualTime.aggregate({ where: manualWhere, _sum: { duration: true } });
++    const manualTime = manualAgg._sum.duration || 0;
+     // manualTime is typically productive or neutral. We'll count it towards productive
+     productiveTime += manualTime;
+ 
+diff --git a/backend/src/modules/screenshots/screenshots.controller.js b/backend/src/modules/screenshots/screenshots.controller.js
+index 67d0695..01719f1 100644
+--- a/backend/src/modules/screenshots/screenshots.controller.js
++++ b/backend/src/modules/screenshots/screenshots.controller.js
+@@ -3,6 +3,8 @@ const { successResponse, errorResponse } = require('../../utils/response');
+ const { getOrganizationId } = require('../../utils/orgId');
+ const prisma = require('../../config/db');
+ const { uploadImageBuffer } = require('../../utils/imageStorage');
++const { canAccessEmployeeData } = require('../../utils/accessControl');
++const { signRecordUrls, signRecordList } = require('../../utils/fileSignature');
+ 
+ const screenshotsController = {
+     // POST /api/screenshots
+@@ -82,7 +84,7 @@ const screenshotsController = {
+                 console.error('[ScreenshotsController] Socket broadcast error:', socketErr.message);
+             }
+ 
+-            return successResponse(res, screenshot, 'Screenshot captured successfully');
++            return successResponse(res, signRecordUrls(screenshot), 'Screenshot captured successfully');
+         } catch (error) {
+             console.error('Error creating screenshot:', error);
+             return errorResponse(res, error.message);
+@@ -131,7 +133,7 @@ const screenshotsController = {
+ 
+             const screenshots = await screenshotsService.getScreenshots(where, parsedLimit, parsedOffset);
+ 
+-            return successResponse(res, screenshots, 'Screenshots fetched successfully');
++            return successResponse(res, signRecordList(screenshots), 'Screenshots fetched successfully');
+         } catch (error) {
+             console.error('Error fetching screenshots:', error);
+             return errorResponse(res, error.message);
+@@ -146,6 +148,10 @@ const screenshotsController = {
+             const organizationId = await getOrganizationId(req);
+             const { role } = req.user;
+ 
++            if (!(await canAccessEmployeeData(req, employeeId))) {
++                return errorResponse(res, 'Forbidden', 403);
++            }
++
+             let where = { employeeId, organizationId };
+ 
+             if (date) {
+@@ -160,7 +166,7 @@ const screenshotsController = {
+             const parsedOffset = parseInt(offset, 10) || 0;
+ 
+             const screenshots = await screenshotsService.getScreenshots(where, parsedLimit, parsedOffset);
+-            return successResponse(res, screenshots, 'Employee screenshots fetched');
++            return successResponse(res, signRecordList(screenshots), 'Employee screenshots fetched');
+         } catch (error) {
+             return errorResponse(res, error.message);
+         }
+@@ -260,8 +266,12 @@ const screenshotsController = {
+                 return errorResponse(res, 'Date is required for playback', 400);
+             }
+ 
++            if (!(await canAccessEmployeeData(req, employeeId))) {
++                return errorResponse(res, 'Forbidden', 403);
++            }
++
+             const screenshots = await screenshotsService.getEmployeePlaybackScreenshots(employeeId, date);
+-            return successResponse(res, screenshots, 'Playback screenshots fetched successfully');
++            return successResponse(res, signRecordList(screenshots), 'Playback screenshots fetched successfully');
+         } catch (error) {
+             return errorResponse(res, error.message);
+         }
+diff --git a/backend/src/modules/tracking/tracking.controller.js b/backend/src/modules/tracking/tracking.controller.js
+index b13df93..d17c0d9 100644
+--- a/backend/src/modules/tracking/tracking.controller.js
++++ b/backend/src/modules/tracking/tracking.controller.js
+@@ -1,12 +1,19 @@
+ const trackingService = require('./tracking.service');
+ const { successResponse, errorResponse } = require('../../utils/response');
++const { canAccessEmployeeData } = require('../../utils/accessControl');
++const { signRecordList } = require('../../utils/fileSignature');
+ 
+ const upload = async (req, res) => {
+     try {
+         const { employeeId, screenshotUrl, videoUrl, activityStatus, location } = req.body;
+-        
++
++        const targetEmployeeId = employeeId || req.user?.employeeId;
++        if (!(await canAccessEmployeeData(req, targetEmployeeId))) {
++            return errorResponse(res, 'Forbidden', 403);
++        }
++
+         const tracking = await trackingService.saveTracking({
+-            employeeId: employeeId || req.user?.employeeId,
++            employeeId: targetEmployeeId,
+             screenshotUrl,
+             videoUrl,
+             activityStatus,
+@@ -24,9 +31,13 @@ const getHistory = async (req, res) => {
+     try {
+         const { employeeId } = req.params;
+         const { startDate, endDate } = req.query;
+-        
++
++        if (!(await canAccessEmployeeData(req, employeeId))) {
++            return errorResponse(res, 'Forbidden', 403);
++        }
++
+         const history = await trackingService.getTrackingHistory(employeeId, { startDate, endDate });
+-        return successResponse(res, history, 'Tracking history retrieved');
++        return successResponse(res, signRecordList(history), 'Tracking history retrieved');
+     } catch (error) {
+         console.error('Get tracking history error:', error);
+         return errorResponse(res, error.message || 'Failed to get history', 500);
+diff --git a/backend/src/utils/email.service.js b/backend/src/utils/email.service.js
+index 142da44..b5d5a72 100644
+--- a/backend/src/utils/email.service.js
++++ b/backend/src/utils/email.service.js
+@@ -150,4 +150,8 @@ async function sendIdleAlertEmail({ employee, manager, idleDuration, taskId, tim
+     });
+ }
+ 
++if (!createTransport()) {
++    console.warn('[EmailService] SMTP is not configured — emails will be SIMULATED, not delivered. Set SMTP_HOST, SMTP_USER and SMTP_PASS to enable real delivery.');
++}
++
+ module.exports = { sendMail, sendIdleAlertEmail };
+\ No newline at end of file
+diff --git a/backend/src/utils/response.js b/backend/src/utils/response.js
+index 5c8b554..48c5b9d 100644
+--- a/backend/src/utils/response.js
++++ b/backend/src/utils/response.js
+@@ -15,14 +15,23 @@ const successResponse = (res, data = null, message = 'Success', statusCode = 200
+ 
+ /**
+  * Standard Error Response
++ * Internal details of 5xx errors are logged server-side only; clients receive
++ * a generic message so database/schema internals are never exposed.
+  * @param {Object} res - Express response object
+  * @param {string} message - Error message
+  * @param {number} statusCode - HTTP status code
+  */
+ const errorResponse = (res, message = 'Error', statusCode = 500) => {
++    let clientMessage = message;
++    if (statusCode >= 500) {
++        if (message && message !== 'Internal Server Error') {
++            console.error(`[ErrorResponse ${statusCode}]`, message);
++        }
++        clientMessage = 'Internal server error. Please try again later.';
++    }
+     return res.status(statusCode).json({
+         success: false,
+-        message,
++        message: clientMessage,
+     });
+ };
+ 
+diff --git a/frontend/package-lock.json b/frontend/package-lock.json
+index d404f20..bd2285b 100644
+--- a/frontend/package-lock.json
++++ b/frontend/package-lock.json
+@@ -586,9 +586,9 @@
+       }
+     },
+     "node_modules/@remix-run/router": {
+-      "version": "1.23.2",
+-      "resolved": "https://registry.npmjs.org/@remix-run/router/-/router-1.23.2.tgz",
+-      "integrity": "sha512-Ic6m2U/rMjTkhERIa/0ZtXJP17QUi2CbWE7cqx4J58M8aA3QTfW+2UlQ4psvTX9IO1RfNVhK3pcpdjej7L+t2w==",
++      "version": "1.23.4",
++      "resolved": "https://registry.npmjs.org/@remix-run/router/-/router-1.23.4.tgz",
++      "integrity": "sha512-q7j5geK7xs3UJSdm9/iytUNclBnLmYx1EnSeCFXHPeutdqgIMeFeHtUZgS3EhlKxdBEAu8OwtJCwmLrEzpSs7Q==",
+       "license": "MIT",
+       "engines": {
+         "node": ">=14.0.0"
+@@ -602,9 +602,9 @@
+       "license": "MIT"
+     },
+     "node_modules/@rollup/rollup-android-arm-eabi": {
+-      "version": "4.57.1",
+-      "resolved": "https://registry.npmjs.org/@rollup/rollup-android-arm-eabi/-/rollup-android-arm-eabi-4.57.1.tgz",
+-      "integrity": "sha512-A6ehUVSiSaaliTxai040ZpZ2zTevHYbvu/lDoeAteHI8QnaosIzm4qwtezfRg1jOYaUmnzLX1AOD6Z+UJjtifg==",
++      "version": "4.68.8",
++      "resolved": "https://registry.npmjs.org/@rollup/rollup-android-arm-eabi/-/rollup-android-arm-eabi-4.68.8.tgz",
++      "integrity": "sha512-7l9FdeCGjhmMTVePgndK4t9u5tLR+VuTTMoyc0PscqZDdYjS07ZsQ0vQYsWsODu/ZZYPG7WVJwbUZ77n1hVT+w==",
+       "cpu": [
+         "arm"
+       ],
+@@ -616,9 +616,9 @@
+       ]
+     },
+     "node_modules/@rollup/rollup-android-arm64": {
+-      "version": "4.57.1",
+-      "resolved": "https://registry.npmjs.org/@rollup/rollup-android-arm64/-/rollup-android-arm64-4.57.1.tgz",
+-      "integrity": "sha512-dQaAddCY9YgkFHZcFNS/606Exo8vcLHwArFZ7vxXq4rigo2bb494/xKMMwRRQW6ug7Js6yXmBZhSBRuBvCCQ3w==",
++      "version": "4.68.8",
++      "resolved": "https://registry.npmjs.org/@rollup/rollup-android-arm64/-/rollup-android-arm64-4.68.8.tgz",
++      "integrity": "sha512-kXkkIiJujBjArHwEToz99BQqIqibn4xdV6SjsoaxuZzvLUCVEzoHQ1Lp62m7xOhpLRpWpCtxL2ZUy/ADKuz9/g==",
+       "cpu": [
+         "arm64"
+       ],
+@@ -629,10 +629,24 @@
+         "android"
+       ]
+     },
++    "node_modules/@rollup/rollup-android-x64": {
++      "version": "4.68.8",
++      "resolved": "https://registry.npmjs.org/@rollup/rollup-android-x64/-/rollup-android-x64-4.68.8.tgz",
++      "integrity": "sha512-KYoBygnHs3zUOLR0z7SaqhMnUrSF9pbuTOJT/uHK3PrgCXdv/xaMubZD8jCpg6NTo46deasLgZRq38xFTyu8uw==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "android"
++      ]
++    },
+     "node_modules/@rollup/rollup-darwin-arm64": {
+-      "version": "4.57.1",
+-      "resolved": "https://registry.npmjs.org/@rollup/rollup-darwin-arm64/-/rollup-darwin-arm64-4.57.1.tgz",
+-      "integrity": "sha512-crNPrwJOrRxagUYeMn/DZwqN88SDmwaJ8Cvi/TN1HnWBU7GwknckyosC2gd0IqYRsHDEnXf328o9/HC6OkPgOg==",
++      "version": "4.68.8",
++      "resolved": "https://registry.npmjs.org/@rollup/rollup-darwin-arm64/-/rollup-darwin-arm64-4.68.8.tgz",
++      "integrity": "sha512-YmBUNjgm5bsjOByO+H1TFbuGZe+ZnHcYtPXYj9+L1cwTu/BG8zjuUzO2PH9KwS85P0UH+WJDSb+mQ2hqjp5uBQ==",
+       "cpu": [
+         "arm64"
+       ],
+@@ -644,9 +658,9 @@
+       ]
+     },
+     "node_modules/@rollup/rollup-darwin-x64": {
+-      "version": "4.57.1",
+-      "resolved": "https://registry.npmjs.org/@rollup/rollup-darwin-x64/-/rollup-darwin-x64-4.57.1.tgz",
+-      "integrity": "sha512-Ji8g8ChVbKrhFtig5QBV7iMaJrGtpHelkB3lsaKzadFBe58gmjfGXAOfI5FV0lYMH8wiqsxKQ1C9B0YTRXVy4w==",
++      "version": "4.68.8",
++      "resolved": "https://registry.npmjs.org/@rollup/rollup-darwin-x64/-/rollup-darwin-x64-4.68.8.tgz",
++      "integrity": "sha512-XMX5ybuOmkwiM13KJtsBxakZ69pyaR9thRYU2fMejhaB0VuzLMIkIc+9TBsu2rv34eEf6XaSMOaLOyEgHGWHTQ==",
+       "cpu": [
+         "x64"
+       ],
+@@ -658,9 +672,9 @@
+       ]
+     },
+     "node_modules/@rollup/rollup-freebsd-arm64": {
+-      "version": "4.57.1",
+-      "resolved": "https://registry.npmjs.org/@rollup/rollup-freebsd-arm64/-/rollup-freebsd-arm64-4.57.1.tgz",
+-      "integrity": "sha512-R+/WwhsjmwodAcz65guCGFRkMb4gKWTcIeLy60JJQbXrJ97BOXHxnkPFrP+YwFlaS0m+uWJTstrUA9o+UchFug==",
++      "version": "4.68.8",
++      "resolved": "https://registry.npmjs.org/@rollup/rollup-freebsd-arm64/-/rollup-freebsd-arm64-4.68.8.tgz",
++      "integrity": "sha512-WuBXScWJDaqPJKwVrotUe1sM9DHWMN937C23RClt0MVHVt7A1rBy285ZfZTLccPEVMxmGJMt2jvdHMOI33lrKA==",
+       "cpu": [
+         "arm64"
+       ],
+@@ -672,9 +686,9 @@
+       ]
+     },
+     "node_modules/@rollup/rollup-freebsd-x64": {
+-      "version": "4.57.1",
+-      "resolved": "https://registry.npmjs.org/@rollup/rollup-freebsd-x64/-/rollup-freebsd-x64-4.57.1.tgz",
+-      "integrity": "sha512-IEQTCHeiTOnAUC3IDQdzRAGj3jOAYNr9kBguI7MQAAZK3caezRrg0GxAb6Hchg4lxdZEI5Oq3iov/w/hnFWY9Q==",
++      "version": "4.68.8",
++      "resolved": "https://registry.npmjs.org/@rollup/rollup-freebsd-x64/-/rollup-freebsd-x64-4.68.8.tgz",
++      "integrity": "sha512-kegwGqP3rMenEMaKo8OzMBb5WvLW2h2jrQ3iKuYptTTF8C/yuxz+hinjBPrtYuIPLJDwxHc/hv2e4u5pmrqo9A==",
+       "cpu": [
+         "x64"
+       ],
+@@ -686,13 +700,16 @@
+       ]
+     },
+     "node_modules/@rollup/rollup-linux-arm-gnueabihf": {
+-      "version": "4.57.1",
+-      "resolved": "https://registry.npmjs.org/@rollup/rollup-linux-arm-gnueabihf/-/rollup-linux-arm-gnueabihf-4.57.1.tgz",
+-      "integrity": "sha512-F8sWbhZ7tyuEfsmOxwc2giKDQzN3+kuBLPwwZGyVkLlKGdV1nvnNwYD0fKQ8+XS6hp9nY7B+ZeK01EBUE7aHaw==",
++      "version": "4.68.8",
++      "resolved": "https://registry.npmjs.org/@rollup/rollup-linux-arm-gnueabihf/-/rollup-linux-arm-gnueabihf-4.68.8.tgz",
++      "integrity": "sha512-Qct0oLM1zGNbvqs1udQnuchg+Q9uHbkMcQqCfs3M7foNn7HvEkUypfFn9o5fklimUI5OF3A2nMknd4/vrEyeVg==",
+       "cpu": [
+         "arm"
+       ],
+       "dev": true,
++      "libc": [
++        "glibc"
++      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -700,13 +717,16 @@
+       ]
+     },
+     "node_modules/@rollup/rollup-linux-arm-musleabihf": {
+-      "version": "4.57.1",
+-      "resolved": "https://registry.npmjs.org/@rollup/rollup-linux-arm-musleabihf/-/rollup-linux-arm-musleabihf-4.57.1.tgz",
+-      "integrity": "sha512-rGfNUfn0GIeXtBP1wL5MnzSj98+PZe/AXaGBCRmT0ts80lU5CATYGxXukeTX39XBKsxzFpEeK+Mrp9faXOlmrw==",
++      "version": "4.68.8",
++      "resolved": "https://registry.npmjs.org/@rollup/rollup-linux-arm-musleabihf/-/rollup-linux-arm-musleabihf-4.68.8.tgz",
++      "integrity": "sha512-xTH5vD+lW/5MU3kL/Op8RSSG/O9fxUQZuJcSBmmBeYem9uXYvCq6PDHx/oDSNeyLD/p4pGujG2PVI0R8MjAhSw==",
+       "cpu": [
+         "arm"
+       ],
+       "dev": true,
++      "libc": [
++        "musl"
++      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -714,13 +734,16 @@
+       ]
+     },
+     "node_modules/@rollup/rollup-linux-arm64-gnu": {
+-      "version": "4.57.1",
+-      "resolved": "https://registry.npmjs.org/@rollup/rollup-linux-arm64-gnu/-/rollup-linux-arm64-gnu-4.57.1.tgz",
+-      "integrity": "sha512-MMtej3YHWeg/0klK2Qodf3yrNzz6CGjo2UntLvk2RSPlhzgLvYEB3frRvbEF2wRKh1Z2fDIg9KRPe1fawv7C+g==",
++      "version": "4.68.8",
++      "resolved": "https://registry.npmjs.org/@rollup/rollup-linux-arm64-gnu/-/rollup-linux-arm64-gnu-4.68.8.tgz",
++      "integrity": "sha512-lPPStmynSHvwWpSrAsuemPFB+EWFObXjwz44EK4Hph47U6SBAk1Kehq5MkI7i8EYVjrXddaAV7YkJH8mX8QSZQ==",
+       "cpu": [
+         "arm64"
+       ],
+       "dev": true,
++      "libc": [
++        "glibc"
++      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -728,13 +751,16 @@
+       ]
+     },
+     "node_modules/@rollup/rollup-linux-arm64-musl": {
+-      "version": "4.57.1",
+-      "resolved": "https://registry.npmjs.org/@rollup/rollup-linux-arm64-musl/-/rollup-linux-arm64-musl-4.57.1.tgz",
+-      "integrity": "sha512-1a/qhaaOXhqXGpMFMET9VqwZakkljWHLmZOX48R0I/YLbhdxr1m4gtG1Hq7++VhVUmf+L3sTAf9op4JlhQ5u1Q==",
++      "version": "4.68.8",
++      "resolved": "https://registry.npmjs.org/@rollup/rollup-linux-arm64-musl/-/rollup-linux-arm64-musl-4.68.8.tgz",
++      "integrity": "sha512-kZkvIYAihM6l6M+giSUHayDDf/JL+TYR5bYWiAX7/jUFWvMkMmysA4GV2F0HOsXQNEyctW3x1xLjww1GqW7Q1w==",
+       "cpu": [
+         "arm64"
+       ],
+       "dev": true,
++      "libc": [
++        "musl"
++      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -742,13 +768,16 @@
+       ]
+     },
+     "node_modules/@rollup/rollup-linux-loong64-gnu": {
+-      "version": "4.57.1",
+-      "resolved": "https://registry.npmjs.org/@rollup/rollup-linux-loong64-gnu/-/rollup-linux-loong64-gnu-4.57.1.tgz",
+-      "integrity": "sha512-QWO6RQTZ/cqYtJMtxhkRkidoNGXc7ERPbZN7dVW5SdURuLeVU7lwKMpo18XdcmpWYd0qsP1bwKPf7DNSUinhvA==",
++      "version": "4.68.8",
++      "resolved": "https://registry.npmjs.org/@rollup/rollup-linux-loong64-gnu/-/rollup-linux-loong64-gnu-4.68.8.tgz",
++      "integrity": "sha512-XZKLEIY977OJr6zUtK6nlQcLXme34c8HqVp3+WmKQxKVN6Nj+b9qE3ZHWIDHXznHJsGl2AsaMOgB0GL0fkZGUg==",
+       "cpu": [
+         "loong64"
+       ],
+       "dev": true,
++      "libc": [
++        "glibc"
++      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -756,13 +785,16 @@
+       ]
+     },
+     "node_modules/@rollup/rollup-linux-loong64-musl": {
+-      "version": "4.57.1",
+-      "resolved": "https://registry.npmjs.org/@rollup/rollup-linux-loong64-musl/-/rollup-linux-loong64-musl-4.57.1.tgz",
+-      "integrity": "sha512-xpObYIf+8gprgWaPP32xiN5RVTi/s5FCR+XMXSKmhfoJjrpRAjCuuqQXyxUa/eJTdAE6eJ+KDKaoEqjZQxh3Gw==",
++      "version": "4.68.8",
++      "resolved": "https://registry.npmjs.org/@rollup/rollup-linux-loong64-musl/-/rollup-linux-loong64-musl-4.68.8.tgz",
++      "integrity": "sha512-+sN+Fj6F9suk8SkL6boIfXDmj9iJwSKPCTeCy8/pfTOHuzNX+duhTb9uyj6154oVK8Odl5zgL4DXRZzXjsRKcw==",
+       "cpu": [
+         "loong64"
+       ],
+       "dev": true,
++      "libc": [
++        "musl"
++      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -770,13 +802,16 @@
+       ]
+     },
+     "node_modules/@rollup/rollup-linux-ppc64-gnu": {
+-      "version": "4.57.1",
+-      "resolved": "https://registry.npmjs.org/@rollup/rollup-linux-ppc64-gnu/-/rollup-linux-ppc64-gnu-4.57.1.tgz",
+-      "integrity": "sha512-4BrCgrpZo4hvzMDKRqEaW1zeecScDCR+2nZ86ATLhAoJ5FQ+lbHVD3ttKe74/c7tNT9c6F2viwB3ufwp01Oh2w==",
++      "version": "4.68.8",
++      "resolved": "https://registry.npmjs.org/@rollup/rollup-linux-ppc64-gnu/-/rollup-linux-ppc64-gnu-4.68.8.tgz",
++      "integrity": "sha512-EBCu3uDFaGwSodUl+XR8yubvVFUkSo6QK9YAIOV1vljqntzTF2/mXLM6utgLaSGf/8oM+qEe8Ai0Jd4+tyMoIQ==",
+       "cpu": [
+         "ppc64"
+       ],
+       "dev": true,
++      "libc": [
++        "glibc"
++      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -784,13 +819,16 @@
+       ]
+     },
+     "node_modules/@rollup/rollup-linux-ppc64-musl": {
+-      "version": "4.57.1",
+-      "resolved": "https://registry.npmjs.org/@rollup/rollup-linux-ppc64-musl/-/rollup-linux-ppc64-musl-4.57.1.tgz",
+-      "integrity": "sha512-NOlUuzesGauESAyEYFSe3QTUguL+lvrN1HtwEEsU2rOwdUDeTMJdO5dUYl/2hKf9jWydJrO9OL/XSSf65R5+Xw==",
++      "version": "4.68.8",
++      "resolved": "https://registry.npmjs.org/@rollup/rollup-linux-ppc64-musl/-/rollup-linux-ppc64-musl-4.68.8.tgz",
++      "integrity": "sha512-hRC0jWdsLBckCijx2wiUfk7zW1SqEW47yMsCNoDGmQfoqq0AjW+9UYZqxg3LTmG76PyHNdNGBSuspB3CqrhGIA==",
+       "cpu": [
+         "ppc64"
+       ],
+       "dev": true,
++      "libc": [
++        "musl"
++      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -798,13 +836,16 @@
+       ]
+     },
+     "node_modules/@rollup/rollup-linux-riscv64-gnu": {
+-      "version": "4.57.1",
+-      "resolved": "https://registry.npmjs.org/@rollup/rollup-linux-riscv64-gnu/-/rollup-linux-riscv64-gnu-4.57.1.tgz",
+-      "integrity": "sha512-ptA88htVp0AwUUqhVghwDIKlvJMD/fmL/wrQj99PRHFRAG6Z5nbWoWG4o81Nt9FT+IuqUQi+L31ZKAFeJ5Is+A==",
++      "version": "4.68.8",
++      "resolved": "https://registry.npmjs.org/@rollup/rollup-linux-riscv64-gnu/-/rollup-linux-riscv64-gnu-4.68.8.tgz",
++      "integrity": "sha512-OZKrTRWyGnLITUTipbeXDdtb2dxQPyFk/Fbw9qER8pIvd2Ja9hHELkY0Fv5p9yYYkimqtzVhApKKXGv0cWGQGw==",
+       "cpu": [
+         "riscv64"
+       ],
+       "dev": true,
++      "libc": [
++        "glibc"
++      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -812,13 +853,16 @@
+       ]
+     },
+     "node_modules/@rollup/rollup-linux-riscv64-musl": {
+-      "version": "4.57.1",
+-      "resolved": "https://registry.npmjs.org/@rollup/rollup-linux-riscv64-musl/-/rollup-linux-riscv64-musl-4.57.1.tgz",
+-      "integrity": "sha512-S51t7aMMTNdmAMPpBg7OOsTdn4tySRQvklmL3RpDRyknk87+Sp3xaumlatU+ppQ+5raY7sSTcC2beGgvhENfuw==",
++      "version": "4.68.8",
++      "resolved": "https://registry.npmjs.org/@rollup/rollup-linux-riscv64-musl/-/rollup-linux-riscv64-musl-4.68.8.tgz",
++      "integrity": "sha512-HmhSRSQ+dOeOntPfmYux4rCpOQLtsGbcGLQu4nm8ig3tuVqe/bKfDHorg36LKAqYq4X/nwFr79ImtaFHHsn4ug==",
+       "cpu": [
+         "riscv64"
+       ],
+       "dev": true,
++      "libc": [
++        "musl"
++      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -826,13 +870,16 @@
+       ]
+     },
+     "node_modules/@rollup/rollup-linux-s390x-gnu": {
+-      "version": "4.57.1",
+-      "resolved": "https://registry.npmjs.org/@rollup/rollup-linux-s390x-gnu/-/rollup-linux-s390x-gnu-4.57.1.tgz",
+-      "integrity": "sha512-Bl00OFnVFkL82FHbEqy3k5CUCKH6OEJL54KCyx2oqsmZnFTR8IoNqBF+mjQVcRCT5sB6yOvK8A37LNm/kPJiZg==",
++      "version": "4.68.8",
++      "resolved": "https://registry.npmjs.org/@rollup/rollup-linux-s390x-gnu/-/rollup-linux-s390x-gnu-4.68.8.tgz",
++      "integrity": "sha512-wk1Ci1hsMREaBELoKPSnzRAh1oUULI+8kfb2F5vVmTD2IcfR9AKMskCusizZhIAvojOtPZihPj4OdKy6ifZwhQ==",
+       "cpu": [
+         "s390x"
+       ],
+       "dev": true,
++      "libc": [
++        "glibc"
++      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -840,13 +887,16 @@
+       ]
+     },
+     "node_modules/@rollup/rollup-linux-x64-gnu": {
+-      "version": "4.57.1",
+-      "resolved": "https://registry.npmjs.org/@rollup/rollup-linux-x64-gnu/-/rollup-linux-x64-gnu-4.57.1.tgz",
+-      "integrity": "sha512-ABca4ceT4N+Tv/GtotnWAeXZUZuM/9AQyCyKYyKnpk4yoA7QIAuBt6Hkgpw8kActYlew2mvckXkvx0FfoInnLg==",
++      "version": "4.68.8",
++      "resolved": "https://registry.npmjs.org/@rollup/rollup-linux-x64-gnu/-/rollup-linux-x64-gnu-4.68.8.tgz",
++      "integrity": "sha512-mDufoUJ6fnKZnCyjV3sGEDvXQQkM6j1UmINHheGX4Emau3TZWJzX3sCVmbzkNB+W2G84BiFQdDCcF09lv0i0VA==",
+       "cpu": [
+         "x64"
+       ],
+       "dev": true,
++      "libc": [
++        "glibc"
++      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -854,13 +904,16 @@
+       ]
+     },
+     "node_modules/@rollup/rollup-linux-x64-musl": {
+-      "version": "4.57.1",
+-      "resolved": "https://registry.npmjs.org/@rollup/rollup-linux-x64-musl/-/rollup-linux-x64-musl-4.57.1.tgz",
+-      "integrity": "sha512-HFps0JeGtuOR2convgRRkHCekD7j+gdAuXM+/i6kGzQtFhlCtQkpwtNzkNj6QhCDp7DRJ7+qC/1Vg2jt5iSOFw==",
++      "version": "4.68.8",
++      "resolved": "https://registry.npmjs.org/@rollup/rollup-linux-x64-musl/-/rollup-linux-x64-musl-4.68.8.tgz",
++      "integrity": "sha512-7EGVL9rYRYQZe3UC8JQzfBN9rxk484Rfs4u/yGWumTYKUdJt6tmdP+0Y3qHvAvzJCQ+JQM5rSqZbVyrJARlGpA==",
+       "cpu": [
+         "x64"
+       ],
+       "dev": true,
++      "libc": [
++        "musl"
++      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -868,9 +921,9 @@
+       ]
+     },
+     "node_modules/@rollup/rollup-openbsd-x64": {
+-      "version": "4.57.1",
+-      "resolved": "https://registry.npmjs.org/@rollup/rollup-openbsd-x64/-/rollup-openbsd-x64-4.57.1.tgz",
+-      "integrity": "sha512-H+hXEv9gdVQuDTgnqD+SQffoWoc0Of59AStSzTEj/feWTBAnSfSD3+Dql1ZruJQxmykT/JVY0dE8Ka7z0DH1hw==",
++      "version": "4.68.8",
++      "resolved": "https://registry.npmjs.org/@rollup/rollup-openbsd-x64/-/rollup-openbsd-x64-4.68.8.tgz",
++      "integrity": "sha512-Umklz+QSGwKWQVlVrsMJrwFx1oNRYHgrxSGiZM8pJCMpzWnMDMinDhPILf0BvRXfA1QOArsDcs+AE7Jd6dQxvA==",
+       "cpu": [
+         "x64"
+       ],
+@@ -882,9 +935,9 @@
+       ]
+     },
+     "node_modules/@rollup/rollup-openharmony-arm64": {
+-      "version": "4.57.1",
+-      "resolved": "https://registry.npmjs.org/@rollup/rollup-openharmony-arm64/-/rollup-openharmony-arm64-4.57.1.tgz",
+-      "integrity": "sha512-4wYoDpNg6o/oPximyc/NG+mYUejZrCU2q+2w6YZqrAs2UcNUChIZXjtafAiiZSUc7On8v5NyNj34Kzj/Ltk6dQ==",
++      "version": "4.68.8",
++      "resolved": "https://registry.npmjs.org/@rollup/rollup-openharmony-arm64/-/rollup-openharmony-arm64-4.68.8.tgz",
++      "integrity": "sha512-BlRp6uzQDK5rczAdaXQ8dlSIRFRlkDRBqpb8GGtv8iwZxQdOjoigdFU5t5dcxpnpU0caMoT9mH27MyAl4dWwKw==",
+       "cpu": [
+         "arm64"
+       ],
+@@ -896,9 +949,9 @@
+       ]
+     },
+     "node_modules/@rollup/rollup-win32-arm64-msvc": {
+-      "version": "4.57.1",
+-      "resolved": "https://registry.npmjs.org/@rollup/rollup-win32-arm64-msvc/-/rollup-win32-arm64-msvc-4.57.1.tgz",
+-      "integrity": "sha512-O54mtsV/6LW3P8qdTcamQmuC990HDfR71lo44oZMZlXU4tzLrbvTii87Ni9opq60ds0YzuAlEr/GNwuNluZyMQ==",
++      "version": "4.68.8",
++      "resolved": "https://registry.npmjs.org/@rollup/rollup-win32-arm64-msvc/-/rollup-win32-arm64-msvc-4.68.8.tgz",
++      "integrity": "sha512-Sc8Mkf/fVfcV0hBJNDRIM82BjS4kJn2Of0jP8dgQ+TodquxtCZ/5D6FgSsY3uN5IBmNi8Zrb/OHd60IEYKaw+Q==",
+       "cpu": [
+         "arm64"
+       ],
+@@ -910,9 +963,9 @@
+       ]
+     },
+     "node_modules/@rollup/rollup-win32-ia32-msvc": {
+-      "version": "4.57.1",
+-      "resolved": "https://registry.npmjs.org/@rollup/rollup-win32-ia32-msvc/-/rollup-win32-ia32-msvc-4.57.1.tgz",
+-      "integrity": "sha512-P3dLS+IerxCT/7D2q2FYcRdWRl22dNbrbBEtxdWhXrfIMPP9lQhb5h4Du04mdl5Woq05jVCDPCMF7Ub0NAjIew==",
++      "version": "4.68.8",
++      "resolved": "https://registry.npmjs.org/@rollup/rollup-win32-ia32-msvc/-/rollup-win32-ia32-msvc-4.68.8.tgz",
++      "integrity": "sha512-XPTFXclN+I+Cfu3ONWDsw+uvgSZjTJa1B2u2EvtdKlSdgNU6mrOZdgeaMkvN+2T2KPTEXn6fnRY8IODlRg3/Tg==",
+       "cpu": [
+         "ia32"
+       ],
+@@ -924,9 +977,9 @@
+       ]
+     },
+     "node_modules/@rollup/rollup-win32-x64-gnu": {
+-      "version": "4.57.1",
+-      "resolved": "https://registry.npmjs.org/@rollup/rollup-win32-x64-gnu/-/rollup-win32-x64-gnu-4.57.1.tgz",
+-      "integrity": "sha512-VMBH2eOOaKGtIJYleXsi2B8CPVADrh+TyNxJ4mWPnKfLB/DBUmzW+5m1xUrcwWoMfSLagIRpjUFeW5CO5hyciQ==",
++      "version": "4.68.8",
++      "resolved": "https://registry.npmjs.org/@rollup/rollup-win32-x64-gnu/-/rollup-win32-x64-gnu-4.68.8.tgz",
++      "integrity": "sha512-63dWiHgvpWcienfdr465lT3SIn4u3535vbDfaLKhSn0F2KJ06bbcUsewDGJZUPZCbJ67qESrPDhb85UnWdb5ew==",
+       "cpu": [
+         "x64"
+       ],
+@@ -938,9 +991,9 @@
+       ]
+     },
+     "node_modules/@rollup/rollup-win32-x64-msvc": {
+-      "version": "4.57.1",
+-      "resolved": "https://registry.npmjs.org/@rollup/rollup-win32-x64-msvc/-/rollup-win32-x64-msvc-4.57.1.tgz",
+-      "integrity": "sha512-mxRFDdHIWRxg3UfIIAwCm6NzvxG0jDX/wBN6KsQFTvKFqqg9vTrWUE68qEjHt19A5wwx5X5aUi2zuZT7YR0jrA==",
++      "version": "4.68.8",
++      "resolved": "https://registry.npmjs.org/@rollup/rollup-win32-x64-msvc/-/rollup-win32-x64-msvc-4.68.8.tgz",
++      "integrity": "sha512-/W1LBsMeQAdiCuH3Z2gkRspl3mlxL+butknhq4vXjmxO45vuT08BqhehxDoE4YS+m6s9lhpq6M9/PjTEAg8PYw==",
+       "cpu": [
+         "x64"
+       ],
+@@ -1267,9 +1320,9 @@
+       "license": "MIT"
+     },
+     "node_modules/@types/estree": {
+-      "version": "1.0.8",
+-      "resolved": "https://registry.npmjs.org/@types/estree/-/estree-1.0.8.tgz",
+-      "integrity": "sha512-dWHzHa2WqEXI/O1E9OjrocMTKJl2mSrEolh1Iomrv6U+JuNwaHXsXx9bLu5gG7BUWFIN0skIQJQ/L1rIex4X6w==",
++      "version": "1.0.10",
++      "resolved": "https://registry.npmjs.org/@types/estree/-/estree-1.0.10.tgz",
++      "integrity": "sha512-lTyOMnOcmRBzdCv6/4zUZCrEhV0xrqQiUZBZtVcbmLHBXKLnN8q89v/wKRF/Q0HbwVsqbIG3o5HDoFl9sduM+g==",
+       "dev": true,
+       "license": "MIT"
+     },
+@@ -1322,6 +1375,18 @@
+         "node": ">=0.8"
+       }
+     },
++    "node_modules/agent-base": {
++      "version": "6.0.2",
++      "resolved": "https://registry.npmjs.org/agent-base/-/agent-base-6.0.2.tgz",
++      "integrity": "sha512-RZNwNclF7+MS/8bDg70amg32dyeZGZxiDuQmZxKLAlQjr3jGyLx+4Kkk58UO7D2QdgFIQCovuSuZESne6RG6XQ==",
++      "license": "MIT",
++      "dependencies": {
++        "debug": "4"
++      },
++      "engines": {
++        "node": ">= 6.0.0"
++      }
++    },
+     "node_modules/any-promise": {
+       "version": "1.3.0",
+       "resolved": "https://registry.npmjs.org/any-promise/-/any-promise-1.3.0.tgz",
+@@ -1394,14 +1459,15 @@
+       }
+     },
+     "node_modules/axios": {
+-      "version": "1.13.6",
+-      "resolved": "https://registry.npmjs.org/axios/-/axios-1.13.6.tgz",
+-      "integrity": "sha512-ChTCHMouEe2kn713WHbQGcuYrr6fXTBiu460OTwWrWob16g1bXn4vtz07Ope7ewMozJAnEquLk5lWQWtBig9DQ==",
++      "version": "1.21.1",
++      "resolved": "https://registry.npmjs.org/axios/-/axios-1.21.1.tgz",
++      "integrity": "sha512-6eI5Q/Y4u/Um9dDlsRoq5pY2rxnUTv+L4PpLitnbk/i4jb3MxLZ5CsN5Ih3IysbeRYK4pR+P7qfMsOQl9fwwFQ==",
+       "license": "MIT",
+       "dependencies": {
+-        "follow-redirects": "^1.15.11",
+-        "form-data": "^4.0.5",
+-        "proxy-from-env": "^1.1.0"
++        "follow-redirects": "^1.16.2",
++        "form-data": "^4.0.6",
++        "https-proxy-agent": "^5.0.1",
++        "proxy-from-env": "^2.1.0"
+       }
+     },
+     "node_modules/base64-arraybuffer": {
+@@ -1415,13 +1481,16 @@
+       }
+     },
+     "node_modules/baseline-browser-mapping": {
+-      "version": "2.9.19",
+-      "resolved": "https://registry.npmjs.org/baseline-browser-mapping/-/baseline-browser-mapping-2.9.19.tgz",
+-      "integrity": "sha512-ipDqC8FrAl/76p2SSWKSI+H9tFwm7vYqXQrItCuiVPt26Km0jS+NzSsBWAaBusvSbQcfJG+JitdMm+wZAgTYqg==",
++      "version": "2.11.39",
++      "resolved": "https://registry.npmjs.org/baseline-browser-mapping/-/baseline-browser-mapping-2.11.39.tgz",
++      "integrity": "sha512-Q9buOYhr2ggrEZpImICecZTJHCCd8yXkRUokFlUEQ8uiD6oP82F4W4jWnhOHZYV+wlvrC51V7Wy0ULyWjil5Wg==",
+       "dev": true,
+       "license": "Apache-2.0",
+       "bin": {
+-        "baseline-browser-mapping": "dist/cli.js"
++        "baseline-browser-mapping": "dist/cli.cjs"
++      },
++      "engines": {
++        "node": ">=6.0.0"
+       }
+     },
+     "node_modules/binary-extensions": {
+@@ -1451,9 +1520,9 @@
+       }
+     },
+     "node_modules/browserslist": {
+-      "version": "4.28.1",
+-      "resolved": "https://registry.npmjs.org/browserslist/-/browserslist-4.28.1.tgz",
+-      "integrity": "sha512-ZC5Bd0LgJXgwGqUknZY/vkUQ04r8NXnJZ3yYi4vDmSiZmC/pdSN0NbNRPxZpbtO4uAfDUAFffO8IZoM3Gj8IkA==",
++      "version": "4.29.6",
++      "resolved": "https://registry.npmjs.org/browserslist/-/browserslist-4.29.6.tgz",
++      "integrity": "sha512-CmVVIQ3RVc5HxYEc9X84GvxK/C8C1wH8TlKAiO7uTxF8PDwt7r8t9Qk3J9NkMOVzX5O/HbLv3yzxZg9HPrnI9w==",
+       "dev": true,
+       "funding": [
+         {
+@@ -1471,11 +1540,11 @@
+       ],
+       "license": "MIT",
+       "dependencies": {
+-        "baseline-browser-mapping": "^2.9.0",
+-        "caniuse-lite": "^1.0.30001759",
+-        "electron-to-chromium": "^1.5.263",
+-        "node-releases": "^2.0.27",
+-        "update-browserslist-db": "^1.2.0"
++        "baseline-browser-mapping": "^2.11.37",
++        "caniuse-lite": "^1.0.30001826",
++        "electron-to-chromium": "^1.5.486",
++        "node-releases": "^2.0.64",
++        "update-browserslist-db": "^1.4.0"
+       },
+       "bin": {
+         "browserslist": "cli.js"
+@@ -1508,9 +1577,9 @@
+       }
+     },
+     "node_modules/caniuse-lite": {
+-      "version": "1.0.30001769",
+-      "resolved": "https://registry.npmjs.org/caniuse-lite/-/caniuse-lite-1.0.30001769.tgz",
+-      "integrity": "sha512-BCfFL1sHijQlBGWBMuJyhZUhzo7wer5sVj9hqekB/7xn0Ypy+pER/edCYQm4exbXj4WiySGp40P8UuTh6w1srg==",
++      "version": "1.0.30001827",
++      "resolved": "https://registry.npmjs.org/caniuse-lite/-/caniuse-lite-1.0.30001827.tgz",
++      "integrity": "sha512-YWEDr46gSO81M8w6uPbaIy4++IXsirx2asUqvllNiD4BPf75ibxclUjWEqp8ObCenRv+UM2n5Y8xuRPT8V8FrQ==",
+       "dev": true,
+       "funding": [
+         {
+@@ -1676,19 +1745,6 @@
+         "utrie": "^1.0.2"
+       }
+     },
+-    "node_modules/cssesc": {
+-      "version": "3.0.0",
+-      "resolved": "https://registry.npmjs.org/cssesc/-/cssesc-3.0.0.tgz",
+-      "integrity": "sha512-/Tb/JcjK111nNScGob5MNtsntNM1aCNUDipB/TkwZFhyDrrE47SOx/18wF2bbjgc3ZzCSKW1T5nt5EbFoAz/Vg==",
+-      "dev": true,
+-      "license": "MIT",
+-      "bin": {
+-        "cssesc": "bin/cssesc"
+-      },
+-      "engines": {
+-        "node": ">=4"
+-      }
+-    },
+     "node_modules/csstype": {
+       "version": "3.2.3",
+       "resolved": "https://registry.npmjs.org/csstype/-/csstype-3.2.3.tgz",
+@@ -1907,22 +1963,22 @@
+       }
+     },
+     "node_modules/electron-to-chromium": {
+-      "version": "1.5.286",
+-      "resolved": "https://registry.npmjs.org/electron-to-chromium/-/electron-to-chromium-1.5.286.tgz",
+-      "integrity": "sha512-9tfDXhJ4RKFNerfjdCcZfufu49vg620741MNs26a9+bhLThdB+plgMeou98CAaHu/WATj2iHOOHTp1hWtABj2A==",
++      "version": "1.5.493",
++      "resolved": "https://registry.npmjs.org/electron-to-chromium/-/electron-to-chromium-1.5.493.tgz",
++      "integrity": "sha512-/Wto2sKd0EpepzMqwSP2il2TNc+rnBDF6k1poCvhRKpaSSD4sLGRBE+FydqHs2QwcW9cXKLVDqnauzJy1oByYw==",
+       "dev": true,
+       "license": "ISC"
+     },
+     "node_modules/engine.io-client": {
+-      "version": "6.6.4",
+-      "resolved": "https://registry.npmjs.org/engine.io-client/-/engine.io-client-6.6.4.tgz",
+-      "integrity": "sha512-+kjUJnZGwzewFDw951CDWcwj35vMNf2fcj7xQWOctq1F2i1jkDdVvdFG9kM/BEChymCH36KgjnW0NsL58JYRxw==",
++      "version": "6.6.8",
++      "resolved": "https://registry.npmjs.org/engine.io-client/-/engine.io-client-6.6.8.tgz",
++      "integrity": "sha512-DPN6+2uNi3A2cbSR3gqJepLVOnSQmbaJT4USgU+TgGPczEqLQT0i6t05jHrf4TT6rcxABrGp/1As0FyqwIZlGg==",
+       "license": "MIT",
+       "dependencies": {
+         "@socket.io/component-emitter": "~3.1.0",
+         "debug": "~4.4.1",
+         "engine.io-parser": "~5.2.1",
+-        "ws": "~8.18.3",
++        "ws": "~8.21.0",
+         "xmlhttprequest-ssl": "~2.1.1"
+       }
+     },
+@@ -1954,9 +2010,9 @@
+       }
+     },
+     "node_modules/es-object-atoms": {
+-      "version": "1.1.1",
+-      "resolved": "https://registry.npmjs.org/es-object-atoms/-/es-object-atoms-1.1.1.tgz",
+-      "integrity": "sha512-FGgH2h8zKNim9ljj7dankFPcICIK9Cp5bm+c2gQSYePhpaG5+esrLODihIorn+Pe6FGJzWhXQotPv73jTaldXA==",
++      "version": "1.1.2",
++      "resolved": "https://registry.npmjs.org/es-object-atoms/-/es-object-atoms-1.1.2.tgz",
++      "integrity": "sha512-HWcBoN6NileqtSydK2FqHbS/LoDd2pqrnQHLyJzBj4kOp/ky2MWMN694xOfkK8/SnUsW2DH7EfyVlydKCsm1Zw==",
+       "license": "MIT",
+       "dependencies": {
+         "es-errors": "^1.3.0"
+@@ -2121,9 +2177,9 @@
+       }
+     },
+     "node_modules/follow-redirects": {
+-      "version": "1.15.11",
+-      "resolved": "https://registry.npmjs.org/follow-redirects/-/follow-redirects-1.15.11.tgz",
+-      "integrity": "sha512-deG2P0JfjrTxl50XGCDyfI97ZGVCxIpfKYmfyrQ54n5FO/0gfIES8C/Psl6kWVDolizcaaxZJnTS0QSMxvnsBQ==",
++      "version": "1.16.3",
++      "resolved": "https://registry.npmjs.org/follow-redirects/-/follow-redirects-1.16.3.tgz",
++      "integrity": "sha512-toOSoqN6d51Wjf1aOFJYcoVv1aND9rj/CwjLU0Vz40oDuSpWDayCeKe4JpL5NL0WdFvoOOCI3BRo69HahjbR1A==",
+       "funding": [
+         {
+           "type": "individual",
+@@ -2141,16 +2197,16 @@
+       }
+     },
+     "node_modules/form-data": {
+-      "version": "4.0.5",
+-      "resolved": "https://registry.npmjs.org/form-data/-/form-data-4.0.5.tgz",
+-      "integrity": "sha512-8RipRLol37bNs2bhoV67fiTEvdTrbMUYcFTiy3+wuuOnUog2QBHCZWXDRijWQfAkhBj2Uf5UnVaiWwA5vdd82w==",
++      "version": "4.0.6",
++      "resolved": "https://registry.npmjs.org/form-data/-/form-data-4.0.6.tgz",
++      "integrity": "sha512-vKatAh4SlVfgbv+YtmhiRjhEMJsYpsG1Y2rMQtR+SVSbytsSD1YGzDIcrAJmdFec88u/+VoGmxnl+80gL1tRCQ==",
+       "license": "MIT",
+       "dependencies": {
+         "asynckit": "^0.4.0",
+         "combined-stream": "^1.0.8",
+         "es-set-tostringtag": "^2.1.0",
+-        "hasown": "^2.0.2",
+-        "mime-types": "^2.1.12"
++        "hasown": "^2.0.4",
++        "mime-types": "^2.1.35"
+       },
+       "engines": {
+         "node": ">= 6"
+@@ -2293,9 +2349,9 @@
+       }
+     },
+     "node_modules/hasown": {
+-      "version": "2.0.2",
+-      "resolved": "https://registry.npmjs.org/hasown/-/hasown-2.0.2.tgz",
+-      "integrity": "sha512-0hJU9SCPvmMzIBdZFqNPXWa6dqh7WdH0cII9y+CyS8rG3nL48Bclra9HmKhVVUHyPWNH5Y7xDwAB7bfgSjkUMQ==",
++      "version": "2.0.4",
++      "resolved": "https://registry.npmjs.org/hasown/-/hasown-2.0.4.tgz",
++      "integrity": "sha512-T2UbfbBEF32wiepXIsMlTW9+dDYC6wMh/t/vYA4tuOMKqWz/n3vr1NFSxQiyP+zk2mXsoMA/i/7qV6LKut1t1A==",
+       "license": "MIT",
+       "dependencies": {
+         "function-bind": "^1.1.2"
+@@ -2318,6 +2374,19 @@
+         "node": ">=8.0.0"
+       }
+     },
++    "node_modules/https-proxy-agent": {
++      "version": "5.0.1",
++      "resolved": "https://registry.npmjs.org/https-proxy-agent/-/https-proxy-agent-5.0.1.tgz",
++      "integrity": "sha512-dFcAjpTQFgoLMzC2VwU+C/CbS7uRL0lWmxDITmqm7C+7F0Odmj6s9l6alZc6AELXhrnggM2CeWSXHGOdX2YtwA==",
++      "license": "MIT",
++      "dependencies": {
++        "agent-base": "6",
++        "debug": "4"
++      },
++      "engines": {
++        "node": ">= 6"
++      }
++    },
+     "node_modules/internmap": {
+       "version": "2.0.3",
+       "resolved": "https://registry.npmjs.org/internmap/-/internmap-2.0.3.tgz",
+@@ -2479,9 +2548,9 @@
+       "license": "MIT"
+     },
+     "node_modules/lodash": {
+-      "version": "4.17.23",
+-      "resolved": "https://registry.npmjs.org/lodash/-/lodash-4.17.23.tgz",
+-      "integrity": "sha512-LgVTMpQtIopCi79SJeDiP0TfWi5CNEc/L/aRdTh3yIvmZXTnheWpKjSZhnvMl8iXbC1tFg9gdHHDMLoV7CnG+w==",
++      "version": "4.18.1",
++      "resolved": "https://registry.npmjs.org/lodash/-/lodash-4.18.1.tgz",
++      "integrity": "sha512-dMInicTPVE8d1e5otfwmmjlxkZoUpiVLwyeTdUsi/Caj/gfzzblBcCE5sRHV/AsjuCmxWrte2TNGSYuCeCq+0Q==",
+       "license": "MIT"
+     },
+     "node_modules/loose-envify": {
+@@ -2578,9 +2647,9 @@
+       }
+     },
+     "node_modules/nanoid": {
+-      "version": "3.3.11",
+-      "resolved": "https://registry.npmjs.org/nanoid/-/nanoid-3.3.11.tgz",
+-      "integrity": "sha512-N8SpfPUnUp1bK+PMYW8qSWdl9U+wwNWI4QKxOYDy9JAro3WMX7p2OeVRF9v+347pnakNevPmiHhNmZ2HbFA76w==",
++      "version": "3.3.20",
++      "resolved": "https://registry.npmjs.org/nanoid/-/nanoid-3.3.20.tgz",
++      "integrity": "sha512-uKdg2G3GNCKQn9byYOpxbGqrT2fGO5KRt5J/8b3pok8rT6qxGWF6hxMyJiEYtAf+FVyYuD9hRaDqX5uPFYJ4ZQ==",
+       "dev": true,
+       "funding": [
+         {
+@@ -2597,11 +2666,14 @@
+       }
+     },
+     "node_modules/node-releases": {
+-      "version": "2.0.27",
+-      "resolved": "https://registry.npmjs.org/node-releases/-/node-releases-2.0.27.tgz",
+-      "integrity": "sha512-nmh3lCkYZ3grZvqcCH+fjmQ7X+H0OeZgP40OierEaAptX4XofMh5kwNbWh7lBduUzCcV/8kZ+NDLCwm2iorIlA==",
++      "version": "2.0.65",
++      "resolved": "https://registry.npmjs.org/node-releases/-/node-releases-2.0.65.tgz",
++      "integrity": "sha512-PfvofsGQ+MiOQIPkX9fU8ELUWmy5zL74CdQaph/ismKszfFkfwXaw0cGiwbwym2hT9k5+mdyl8O5WQ1MD8EHmA==",
+       "dev": true,
+-      "license": "MIT"
++      "license": "MIT",
++      "engines": {
++        "node": ">=18"
++      }
+     },
+     "node_modules/normalize-path": {
+       "version": "3.0.0",
+@@ -2670,9 +2742,9 @@
+       "license": "ISC"
+     },
+     "node_modules/picomatch": {
+-      "version": "2.3.1",
+-      "resolved": "https://registry.npmjs.org/picomatch/-/picomatch-2.3.1.tgz",
+-      "integrity": "sha512-JU3teHTNjmE2VCGFzuY8EXzCDVwEqB2a8fsIvwaStHhAWJEeVd1o1QD80CU6+ZdEXXSLbSsuLwJjkCBWqRQUVA==",
++      "version": "2.3.2",
++      "resolved": "https://registry.npmjs.org/picomatch/-/picomatch-2.3.2.tgz",
++      "integrity": "sha512-V7+vQEJ06Z+c5tSye8S+nHUfI51xoXIXjHQ99cQtKUkQqqO1kO/KCJUfZXuB47h/YBlDhah2H3hdUGXn8ie0oA==",
+       "dev": true,
+       "license": "MIT",
+       "engines": {
+@@ -2703,9 +2775,9 @@
+       }
+     },
+     "node_modules/postcss": {
+-      "version": "8.5.6",
+-      "resolved": "https://registry.npmjs.org/postcss/-/postcss-8.5.6.tgz",
+-      "integrity": "sha512-3Ybi1tAuwAP9s0r1UQ2J4n5Y0G05bJkpUIO0/bI9MhwmD70S5aTWbXGBwxHrelT+XM1k6dM0pk+SwNkpTRN7Pg==",
++      "version": "8.5.33",
++      "resolved": "https://registry.npmjs.org/postcss/-/postcss-8.5.33.tgz",
++      "integrity": "sha512-RVHEU9/Pp1Fnjr/MpAJsZoADukCKhfIi15OunEYiGktIkYLkPVvC1sioWolGDS7XByMTx9m/IGbro0Js13zhnQ==",
+       "dev": true,
+       "funding": [
+         {
+@@ -2723,9 +2795,9 @@
+       ],
+       "license": "MIT",
+       "dependencies": {
+-        "nanoid": "^3.3.11",
++        "nanoid": "^3.3.20",
+         "picocolors": "^1.1.1",
+-        "source-map-js": "^1.2.1"
++        "source-map-js": "^1.2.2"
+       },
+       "engines": {
+         "node": "^10 || ^12 || >=14"
+@@ -2845,13 +2917,12 @@
+       }
+     },
+     "node_modules/postcss-selector-parser": {
+-      "version": "6.1.2",
+-      "resolved": "https://registry.npmjs.org/postcss-selector-parser/-/postcss-selector-parser-6.1.2.tgz",
+-      "integrity": "sha512-Q8qQfPiZ+THO/3ZrOrO0cJJKfpYCagtMUkXbnEfmgUjwXg6z/WBeOyS9APBBPCTSiDV+s4SwQGu8yFsiMRIudg==",
++      "version": "6.1.6",
++      "resolved": "https://registry.npmjs.org/postcss-selector-parser/-/postcss-selector-parser-6.1.6.tgz",
++      "integrity": "sha512-BK87/Qgti3DIcgS2PaCVoteFIkjIFvCJBizZDIVSjdlFNg4Jv+SRqbN2JONb/qQUH4ZFqfXYF+izg15W2HVRvA==",
+       "dev": true,
+       "license": "MIT",
+       "dependencies": {
+-        "cssesc": "^3.0.0",
+         "util-deprecate": "^1.0.2"
+       },
+       "engines": {
+@@ -2883,10 +2954,13 @@
+       "license": "MIT"
+     },
+     "node_modules/proxy-from-env": {
+-      "version": "1.1.0",
+-      "resolved": "https://registry.npmjs.org/proxy-from-env/-/proxy-from-env-1.1.0.tgz",
+-      "integrity": "sha512-D+zkORCbA9f1tdWRK0RaCR3GPv50cMxcrz4X8k5LTSUD1Dkw47mKJEZQNunItRTkWwgtaUSo1RVFRIG9ZXiFYg==",
+-      "license": "MIT"
++      "version": "2.1.0",
++      "resolved": "https://registry.npmjs.org/proxy-from-env/-/proxy-from-env-2.1.0.tgz",
++      "integrity": "sha512-cJ+oHTW1VAEa8cJslgmUZrc+sjRKgAKl3Zyse6+PV38hZe/V6Z14TbCuXcan9F9ghlz4QrFr2c92TNF82UkYHA==",
++      "license": "MIT",
++      "engines": {
++        "node": ">=10"
++      }
+     },
+     "node_modules/queue-microtask": {
+       "version": "1.2.3",
+@@ -2965,12 +3039,12 @@
+       }
+     },
+     "node_modules/react-router": {
+-      "version": "6.30.3",
+-      "resolved": "https://registry.npmjs.org/react-router/-/react-router-6.30.3.tgz",
+-      "integrity": "sha512-XRnlbKMTmktBkjCLE8/XcZFlnHvr2Ltdr1eJX4idL55/9BbORzyZEaIkBFDhFGCEWBBItsVrDxwx3gnisMitdw==",
++      "version": "6.30.6",
++      "resolved": "https://registry.npmjs.org/react-router/-/react-router-6.30.6.tgz",
++      "integrity": "sha512-5HfK7k5im7LTOB0EqCQmfvy4C13G92Ssj1VTmouTK3AJvyjKTnFuCV0vcMAD/JS+JC4DvDIBRrlAeJIFjh5VWg==",
+       "license": "MIT",
+       "dependencies": {
+-        "@remix-run/router": "1.23.2"
++        "@remix-run/router": "1.23.4"
+       },
+       "engines": {
+         "node": ">=14.0.0"
+@@ -2980,13 +3054,13 @@
+       }
+     },
+     "node_modules/react-router-dom": {
+-      "version": "6.30.3",
+-      "resolved": "https://registry.npmjs.org/react-router-dom/-/react-router-dom-6.30.3.tgz",
+-      "integrity": "sha512-pxPcv1AczD4vso7G4Z3TKcvlxK7g7TNt3/FNGMhfqyntocvYKj+GCatfigGDjbLozC4baguJ0ReCigoDJXb0ag==",
++      "version": "6.30.6",
++      "resolved": "https://registry.npmjs.org/react-router-dom/-/react-router-dom-6.30.6.tgz",
++      "integrity": "sha512-0RHKZz7wwffvkU+2MFVT2NnjK44ssLEV+m0CAJaS2Ksmorrwj7WxH00jO0SOCW26/tINUnJHToXblDs33I38YQ==",
+       "license": "MIT",
+       "dependencies": {
+-        "@remix-run/router": "1.23.2",
+-        "react-router": "6.30.3"
++        "@remix-run/router": "1.23.4",
++        "react-router": "6.30.6"
+       },
+       "engines": {
+         "node": ">=14.0.0"
+@@ -3132,13 +3206,13 @@
+       }
+     },
+     "node_modules/rollup": {
+-      "version": "4.57.1",
+-      "resolved": "https://registry.npmjs.org/rollup/-/rollup-4.57.1.tgz",
+-      "integrity": "sha512-oQL6lgK3e2QZeQ7gcgIkS2YZPg5slw37hYufJ3edKlfQSGGm8ICoxswK15ntSzF/a8+h7ekRy7k7oWc3BQ7y8A==",
++      "version": "4.68.8",
++      "resolved": "https://registry.npmjs.org/rollup/-/rollup-4.68.8.tgz",
++      "integrity": "sha512-IHx4DeeTGhoAPke6p1Wlg0JEQFyQoZQQjEe1iD+nhEERk7eoeHK9zyOpVJiGc54Z1MCgI96rN1tD7Ttub8XyPA==",
+       "dev": true,
+       "license": "MIT",
+       "dependencies": {
+-        "@types/estree": "1.0.8"
++        "@types/estree": "^1.0.10"
+       },
+       "bin": {
+         "rollup": "dist/bin/rollup"
+@@ -3148,31 +3222,32 @@
+         "npm": ">=8.0.0"
+       },
+       "optionalDependencies": {
+-        "@rollup/rollup-android-arm-eabi": "4.57.1",
+-        "@rollup/rollup-android-arm64": "4.57.1",
+-        "@rollup/rollup-darwin-arm64": "4.57.1",
+-        "@rollup/rollup-darwin-x64": "4.57.1",
+-        "@rollup/rollup-freebsd-arm64": "4.57.1",
+-        "@rollup/rollup-freebsd-x64": "4.57.1",
+-        "@rollup/rollup-linux-arm-gnueabihf": "4.57.1",
+-        "@rollup/rollup-linux-arm-musleabihf": "4.57.1",
+-        "@rollup/rollup-linux-arm64-gnu": "4.57.1",
+-        "@rollup/rollup-linux-arm64-musl": "4.57.1",
+-        "@rollup/rollup-linux-loong64-gnu": "4.57.1",
+-        "@rollup/rollup-linux-loong64-musl": "4.57.1",
+-        "@rollup/rollup-linux-ppc64-gnu": "4.57.1",
+-        "@rollup/rollup-linux-ppc64-musl": "4.57.1",
+-        "@rollup/rollup-linux-riscv64-gnu": "4.57.1",
+-        "@rollup/rollup-linux-riscv64-musl": "4.57.1",
+-        "@rollup/rollup-linux-s390x-gnu": "4.57.1",
+-        "@rollup/rollup-linux-x64-gnu": "4.57.1",
+-        "@rollup/rollup-linux-x64-musl": "4.57.1",
+-        "@rollup/rollup-openbsd-x64": "4.57.1",
+-        "@rollup/rollup-openharmony-arm64": "4.57.1",
+-        "@rollup/rollup-win32-arm64-msvc": "4.57.1",
+-        "@rollup/rollup-win32-ia32-msvc": "4.57.1",
+-        "@rollup/rollup-win32-x64-gnu": "4.57.1",
+-        "@rollup/rollup-win32-x64-msvc": "4.57.1",
++        "@rollup/rollup-android-arm-eabi": "4.68.8",
++        "@rollup/rollup-android-arm64": "4.68.8",
++        "@rollup/rollup-android-x64": "4.68.8",
++        "@rollup/rollup-darwin-arm64": "4.68.8",
++        "@rollup/rollup-darwin-x64": "4.68.8",
++        "@rollup/rollup-freebsd-arm64": "4.68.8",
++        "@rollup/rollup-freebsd-x64": "4.68.8",
++        "@rollup/rollup-linux-arm-gnueabihf": "4.68.8",
++        "@rollup/rollup-linux-arm-musleabihf": "4.68.8",
++        "@rollup/rollup-linux-arm64-gnu": "4.68.8",
++        "@rollup/rollup-linux-arm64-musl": "4.68.8",
++        "@rollup/rollup-linux-loong64-gnu": "4.68.8",
++        "@rollup/rollup-linux-loong64-musl": "4.68.8",
++        "@rollup/rollup-linux-ppc64-gnu": "4.68.8",
++        "@rollup/rollup-linux-ppc64-musl": "4.68.8",
++        "@rollup/rollup-linux-riscv64-gnu": "4.68.8",
++        "@rollup/rollup-linux-riscv64-musl": "4.68.8",
++        "@rollup/rollup-linux-s390x-gnu": "4.68.8",
++        "@rollup/rollup-linux-x64-gnu": "4.68.8",
++        "@rollup/rollup-linux-x64-musl": "4.68.8",
++        "@rollup/rollup-openbsd-x64": "4.68.8",
++        "@rollup/rollup-openharmony-arm64": "4.68.8",
++        "@rollup/rollup-win32-arm64-msvc": "4.68.8",
++        "@rollup/rollup-win32-ia32-msvc": "4.68.8",
++        "@rollup/rollup-win32-x64-gnu": "4.68.8",
++        "@rollup/rollup-win32-x64-msvc": "4.68.8",
+         "fsevents": "~2.3.2"
+       }
+     },
+@@ -3225,9 +3300,9 @@
+       }
+     },
+     "node_modules/socket.io-parser": {
+-      "version": "4.2.5",
+-      "resolved": "https://registry.npmjs.org/socket.io-parser/-/socket.io-parser-4.2.5.tgz",
+-      "integrity": "sha512-bPMmpy/5WWKHea5Y/jYAP6k74A+hvmRCQaJuJB6I/ML5JZq/KfNieUVo/3Mh7SAqn7TyFdIo6wqYHInG1MU1bQ==",
++      "version": "4.2.7",
++      "resolved": "https://registry.npmjs.org/socket.io-parser/-/socket.io-parser-4.2.7.tgz",
++      "integrity": "sha512-IH/iSeO9T6gz1KkFleGDWkG9N3dl4jXVYUtMhIqH10Md0ttMer8nUNWiP1DKuNrybD2xBrixLJdCC9J6ECoYkg==",
+       "license": "MIT",
+       "dependencies": {
+         "@socket.io/component-emitter": "~3.1.0",
+@@ -3238,13 +3313,13 @@
+       }
+     },
+     "node_modules/source-map-js": {
+-      "version": "1.2.1",
+-      "resolved": "https://registry.npmjs.org/source-map-js/-/source-map-js-1.2.1.tgz",
+-      "integrity": "sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==",
++      "version": "1.2.4",
++      "resolved": "https://registry.npmjs.org/source-map-js/-/source-map-js-1.2.4.tgz",
++      "integrity": "sha512-J7ZjMvHd9O1fcT/5V09QWaaSl2BbWx3F6O08spde82Namf9UB0GxRVIPiNbVsdKkoizHiSpTodo3vp2bAy91MA==",
+       "dev": true,
+       "license": "BSD-3-Clause",
+       "engines": {
+-        "node": ">=0.10.0"
++        "node": ">=6.0.0"
+       }
+     },
+     "node_modules/ssf": {
+@@ -3447,9 +3522,9 @@
+       }
+     },
+     "node_modules/tinyglobby/node_modules/picomatch": {
+-      "version": "4.0.3",
+-      "resolved": "https://registry.npmjs.org/picomatch/-/picomatch-4.0.3.tgz",
+-      "integrity": "sha512-5gTmgEY/sqK6gFXLIsQNH19lWb4ebPDLA4SdLP7dsWkIXHWlG66oPuVvXSGFPppYZz8ZDZq0dYYrbHfBCVUb1Q==",
++      "version": "4.0.7",
++      "resolved": "https://registry.npmjs.org/picomatch/-/picomatch-4.0.7.tgz",
++      "integrity": "sha512-qcJu88Q2IWqJsDD529JKMdwGm/dvInW4HvQnRwiH9JtihJvzGOscDtHE3x1pBKeUOTysQ8kVmLnJ2kJu7yhcGA==",
+       "dev": true,
+       "license": "MIT",
+       "engines": {
+@@ -3480,9 +3555,9 @@
+       "license": "Apache-2.0"
+     },
+     "node_modules/update-browserslist-db": {
+-      "version": "1.2.3",
+-      "resolved": "https://registry.npmjs.org/update-browserslist-db/-/update-browserslist-db-1.2.3.tgz",
+-      "integrity": "sha512-Js0m9cx+qOgDxo0eMiFGEueWztz+d4+M3rGlmKPT+T4IS/jP4ylw3Nwpu6cpTTP8R1MAC1kF4VbdLt3ARf209w==",
++      "version": "1.4.0",
++      "resolved": "https://registry.npmjs.org/update-browserslist-db/-/update-browserslist-db-1.4.0.tgz",
++      "integrity": "sha512-WPJuOnjI9FWDct4fB+ej4Mz8opLaw5CDcZ2t44tFZ0vIQVYWzBhWR3mkixuUj/A7+vY4V9+ApOZ2YYLwdgq46w==",
+       "dev": true,
+       "funding": [
+         {
+@@ -3628,9 +3703,9 @@
+       }
+     },
+     "node_modules/ws": {
+-      "version": "8.18.3",
+-      "resolved": "https://registry.npmjs.org/ws/-/ws-8.18.3.tgz",
+-      "integrity": "sha512-PEIGCY5tSlUt50cqyMXfCzX+oOPqN0vuGqWzbcJ2xvnkzkq46oOpz7dQaTDBdfICb4N14+GARUDw2XV2N4tvzg==",
++      "version": "8.21.3",
++      "resolved": "https://registry.npmjs.org/ws/-/ws-8.21.3.tgz",
++      "integrity": "sha512-201TZ/kPWxoPr/OKWjquZR1SWKXcvxdH+e1xrx89b3YbmzLMFCLfnaG1HFIgWzJOEWZ7MvpK++odZufgYR50Rw==",
+       "license": "MIT",
+       "engines": {
+         "node": ">=10.0.0"
+diff --git a/frontend/src/App.jsx b/frontend/src/App.jsx
+index 306f1d0..fcd73e5 100644
+--- a/frontend/src/App.jsx
++++ b/frontend/src/App.jsx
+@@ -1,66 +1,75 @@
+ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+ import { DashboardLayout } from './layouts/DashboardLayout';
+-import { Dashboard } from './pages/Dashboard';
+-import { TimeAndAttendance } from './pages/TimeAndAttendance';
+-import { ActivityMonitoring } from './pages/ActivityMonitoring';
+-import { ActivitiesTimeline } from './pages/ActivitiesTimeline';
+-import { ScreenshotMonitoring } from './pages/ScreenshotMonitoring';
+-import { EmployeeManagement } from './pages/EmployeeManagement';
+-import { EmployeeProfile } from './pages/EmployeeProfile';
+-import { Settings } from './pages/Settings';
+-// Attendance is now part of TimeAndAttendance
+-import { LocationTracking } from './pages/LocationTracking';
+-import { TasksProjects } from './pages/TasksProjects';
+-import { Reports } from './pages/Reports';
+-import { WorkType } from './pages/reports/WorkType';
+-import { ScheduleAdherence } from './pages/reports/ScheduleAdherence';
+-import { WorkloadDistribution } from './pages/reports/WorkloadDistribution';
+-import { AppsWebsites } from './pages/reports/AppsWebsites';
+-import { LocationInsights } from './pages/reports/LocationInsights';
+-import { Payroll } from './pages/Payroll';
+-import { Alerts } from './pages/Alerts';
+-import { Compliance } from './pages/Compliance';
+-import { Notifications } from './pages/Notifications';
+-import { RealTimeInsights } from './pages/RealTimeInsights';
+-import { Teams } from './pages/Teams';
+-import { Projects } from './pages/Projects';
+-import { AgentManagement } from './pages/AgentManagement';
+-import { SetupPassword } from './pages/SetupPassword';
+-import { SetupAgent } from './pages/SetupAgent';
+ import { Login } from './pages/Login';
+-import { WorkloadDistributionSettings } from './pages/settings/reports/WorkloadDistributionSettings';
+-import { LocationInsightsSettings } from './pages/settings/reports/LocationInsightsSettings';
+-import { AlertsLayout } from './pages/settings/alerts/AlertsLayout';
+-import { AttendanceAlerts } from './pages/settings/alerts/AttendanceAlerts';
+-import { SecurityAlerts } from './pages/settings/alerts/SecurityAlerts';
+-import { ShiftScheduling } from './pages/settings/alerts/ShiftScheduling';
+-import { OtherAlerts } from './pages/settings/alerts/OtherAlerts';
+-import { AuditLogs } from './pages/settings/AuditLogs';
+-import { EmailReports } from './pages/settings/EmailReports';
+-import { BillingLayout } from './pages/settings/billing/BillingLayout';
+-import { ManualTime } from './pages/settings/ManualTime';
+-import { Organization } from './pages/settings/Organization';
+-import { PersonalSettings } from './pages/settings/PersonalSettings';
+-import { Privacy } from './pages/settings/Privacy';
+-import { PrivacyOverview } from './components/privacy/PrivacyOverview';
+-import { PrivacyCompliance } from './components/privacy/PrivacyCompliance';
+-import { ProductivityApps } from './pages/settings/ProductivityApps';
+-import { SecurityLanding } from './pages/settings/SecurityLanding';
+-import { SamlWizard } from './pages/settings/SamlWizard';
+-import { TrackingSettings } from './pages/settings/TrackingSettings';
+-import { AdvancedTrackingSettings } from './pages/settings/AdvancedTrackingSettings';
+-import { ManageOrgGroups } from './pages/settings/ManageOrgGroups';
+-import { Utilization } from './pages/settings/Utilization';
+-import { Plans } from './pages/settings/billing/Plans';
+-import { AddOns } from './pages/settings/billing/AddOns';
+-import ProcessMining from './pages/reports/ProcessMining';
+-import ComplianceReadiness from './pages/compliance/ComplianceReadiness';
+ import { ProtectedRoute, PublicRoute, RoleRoute } from './components/ProtectedRoute';
+-import { ManageUsers } from './pages/settings/ManageUsers';
+ import { RealTimeProvider } from './hooks/RealTimeContext';
+ import { WorkSessionRequired } from './components/employee/WorkSessionRequired';
++import { lazy, Suspense, useEffect } from 'react';
++
++// Page-level code splitting: each route loads its own chunk on demand
++const lazyNamed = (loader, name) => lazy(() => loader().then(m => ({ default: m[name] })));
++
++const Dashboard = lazyNamed(() => import('./pages/Dashboard'), 'Dashboard');
++const TimeAndAttendance = lazyNamed(() => import('./pages/TimeAndAttendance'), 'TimeAndAttendance');
++const ActivityMonitoring = lazyNamed(() => import('./pages/ActivityMonitoring'), 'ActivityMonitoring');
++const ActivitiesTimeline = lazyNamed(() => import('./pages/ActivitiesTimeline'), 'ActivitiesTimeline');
++const ScreenshotMonitoring = lazyNamed(() => import('./pages/ScreenshotMonitoring'), 'ScreenshotMonitoring');
++const EmployeeManagement = lazyNamed(() => import('./pages/EmployeeManagement'), 'EmployeeManagement');
++const EmployeeProfile = lazyNamed(() => import('./pages/EmployeeProfile'), 'EmployeeProfile');
++const Settings = lazyNamed(() => import('./pages/Settings'), 'Settings');
++const LocationTracking = lazyNamed(() => import('./pages/LocationTracking'), 'LocationTracking');
++const TasksProjects = lazyNamed(() => import('./pages/TasksProjects'), 'TasksProjects');
++const Reports = lazyNamed(() => import('./pages/Reports'), 'Reports');
++const WorkType = lazyNamed(() => import('./pages/reports/WorkType'), 'WorkType');
++const ScheduleAdherence = lazyNamed(() => import('./pages/reports/ScheduleAdherence'), 'ScheduleAdherence');
++const WorkloadDistribution = lazyNamed(() => import('./pages/reports/WorkloadDistribution'), 'WorkloadDistribution');
++const AppsWebsites = lazyNamed(() => import('./pages/reports/AppsWebsites'), 'AppsWebsites');
++const LocationInsights = lazyNamed(() => import('./pages/reports/LocationInsights'), 'LocationInsights');
++const Payroll = lazyNamed(() => import('./pages/Payroll'), 'Payroll');
++const Alerts = lazyNamed(() => import('./pages/Alerts'), 'Alerts');
++const Compliance = lazyNamed(() => import('./pages/Compliance'), 'Compliance');
++const Notifications = lazyNamed(() => import('./pages/Notifications'), 'Notifications');
++const RealTimeInsights = lazyNamed(() => import('./pages/RealTimeInsights'), 'RealTimeInsights');
++const Teams = lazyNamed(() => import('./pages/Teams'), 'Teams');
++const Projects = lazyNamed(() => import('./pages/Projects'), 'Projects');
++const AgentManagement = lazyNamed(() => import('./pages/AgentManagement'), 'AgentManagement');
++const SetupPassword = lazyNamed(() => import('./pages/SetupPassword'), 'SetupPassword');
++const SetupAgent = lazyNamed(() => import('./pages/SetupAgent'), 'SetupAgent');
++const WorkloadDistributionSettings = lazyNamed(() => import('./pages/settings/reports/WorkloadDistributionSettings'), 'WorkloadDistributionSettings');
++const LocationInsightsSettings = lazyNamed(() => import('./pages/settings/reports/LocationInsightsSettings'), 'LocationInsightsSettings');
++const AlertsLayout = lazyNamed(() => import('./pages/settings/alerts/AlertsLayout'), 'AlertsLayout');
++const AttendanceAlerts = lazyNamed(() => import('./pages/settings/alerts/AttendanceAlerts'), 'AttendanceAlerts');
++const SecurityAlerts = lazyNamed(() => import('./pages/settings/alerts/SecurityAlerts'), 'SecurityAlerts');
++const ShiftScheduling = lazyNamed(() => import('./pages/settings/alerts/ShiftScheduling'), 'ShiftScheduling');
++const OtherAlerts = lazyNamed(() => import('./pages/settings/alerts/OtherAlerts'), 'OtherAlerts');
++const AuditLogs = lazyNamed(() => import('./pages/settings/AuditLogs'), 'AuditLogs');
++const EmailReports = lazyNamed(() => import('./pages/settings/EmailReports'), 'EmailReports');
++const BillingLayout = lazyNamed(() => import('./pages/settings/billing/BillingLayout'), 'BillingLayout');
++const ManualTime = lazyNamed(() => import('./pages/settings/ManualTime'), 'ManualTime');
++const Organization = lazyNamed(() => import('./pages/settings/Organization'), 'Organization');
++const PersonalSettings = lazyNamed(() => import('./pages/settings/PersonalSettings'), 'PersonalSettings');
++const Privacy = lazyNamed(() => import('./pages/settings/Privacy'), 'Privacy');
++const PrivacyOverview = lazyNamed(() => import('./components/privacy/PrivacyOverview'), 'PrivacyOverview');
++const PrivacyCompliance = lazyNamed(() => import('./components/privacy/PrivacyCompliance'), 'PrivacyCompliance');
++const ProductivityApps = lazyNamed(() => import('./pages/settings/ProductivityApps'), 'ProductivityApps');
++const SecurityLanding = lazyNamed(() => import('./pages/settings/SecurityLanding'), 'SecurityLanding');
++const SamlWizard = lazyNamed(() => import('./pages/settings/SamlWizard'), 'SamlWizard');
++const TrackingSettings = lazyNamed(() => import('./pages/settings/TrackingSettings'), 'TrackingSettings');
++const AdvancedTrackingSettings = lazyNamed(() => import('./pages/settings/AdvancedTrackingSettings'), 'AdvancedTrackingSettings');
++const ManageOrgGroups = lazyNamed(() => import('./pages/settings/ManageOrgGroups'), 'ManageOrgGroups');
++const Utilization = lazyNamed(() => import('./pages/settings/Utilization'), 'Utilization');
++const Plans = lazyNamed(() => import('./pages/settings/billing/Plans'), 'Plans');
++const AddOns = lazyNamed(() => import('./pages/settings/billing/AddOns'), 'AddOns');
++const ManageUsers = lazyNamed(() => import('./pages/settings/ManageUsers'), 'ManageUsers');
++const ProcessMining = lazy(() => import('./pages/reports/ProcessMining'));
++const ComplianceReadiness = lazy(() => import('./pages/compliance/ComplianceReadiness'));
++
++const PageLoader = (
++    <div className="flex items-center justify-center min-h-[40vh] text-slate-400 text-sm font-medium">
++        Loading…
++    </div>
++);
+ 
+-import { useEffect } from 'react';
+ import { useAuthStore } from './store/authStore';
+ 
+ import authService from './services/authService';
+@@ -110,6 +119,7 @@ function App() {
+         <ToastProvider>
+             <RealTimeProvider>
+                 <Router future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
++                    <Suspense fallback={PageLoader}>
+                     <Routes>
+                         {/* Public Routes */}
+                         <Route path="/login" element={<Login />} />
+@@ -228,6 +238,7 @@ function App() {
+                             </ProtectedRoute>
+                         } />
+                     </Routes>
++                    </Suspense>
+                 </Router>
+             </RealTimeProvider>
+         </ToastProvider>
+diff --git a/frontend/src/pages/settings/billing/BillingLayout.jsx b/frontend/src/pages/settings/billing/BillingLayout.jsx
+index d4be2dd..5cfc83b 100644
+--- a/frontend/src/pages/settings/billing/BillingLayout.jsx
++++ b/frontend/src/pages/settings/billing/BillingLayout.jsx
+@@ -25,6 +25,13 @@ export function BillingLayout() {
+ 
+     return (
+         <div className="min-h-screen bg-[#fcfdfe] dark:bg-slate-950 pb-20">
++            {/* Demo Mode Notice — no real payment processing is connected */}
++            <div className="w-full bg-sky-50 dark:bg-sky-900/20 border-b border-sky-100 dark:border-sky-800/30 py-2 px-6 flex items-center justify-center gap-2">
++                <CreditCard size={14} className="text-sky-500 shrink-0" />
++                <p className="text-xs font-semibold text-sky-700 dark:text-sky-300">
++                    Demo mode: billing and subscriptions are simulated. No real payments are processed.
++                </p>
++            </div>
+             {/* Trial Banner */}
+             {isTrial && trialDaysLeft > 0 && (
+                 <div className="w-full bg-amber-50 dark:bg-amber-900/20 border-b border-amber-100 dark:border-amber-800/30 py-3 px-6 flex items-center justify-center gap-3 animate-in fade-in duration-500">
+diff --git a/frontend/src/pages/temp.jsx b/frontend/src/pages/temp.jsx
+deleted file mode 100644
+index 5318c04..0000000
+--- a/frontend/src/pages/temp.jsx
++++ /dev/null
+@@ -1,170 +0,0 @@
+-                                                        <div className="h-9 w-9 rounded-full overflow-hidden border border-slate-200 dark:border-slate-700 shrink-0 bg-primary-100 dark:bg-primary-950/40 flex items-center justify-center">
+-                                                            {emp.avatar ? (
+-                                                                <img src={emp.avatar} alt={emp.name} className="w-full h-full object-cover"
+-                                                                    onError={e => { e.target.style.display='none'; e.target.nextSibling.style.display='flex'; }}
+-                                                                />
+-                                                            ) : null}
+-                                                            <span className={`text-[10px] font-black text-primary-700 dark:text-primary-300 ${emp.avatar ? 'hidden' : 'flex'}`}>
+-                                                                {emp.initials || (emp.name || '?').split(' ').map(n => n[0]).join('').toUpperCase().slice(0,2)}
+-                                                            </span>
+-                                                        </div>
+-                                                        <span className="font-bold text-slate-800 dark:text-white">{emp.name}</span>
+-                                                    </div>
+-                                                </td>
+-                                                <td className="px-6 py-4">{formatHours(emp.totalWorkHours || 0)}</td>
+-                                                <td className="px-6 py-4">{formatHours(emp.manualHours || 0)}</td>
+-                                                <td className="px-6 py-4">{formatHours(emp.computerActivityHours || 0)}</td>
+-                                                <td className="px-6 py-4">
+-                                                    <div className="flex flex-col">
+-                                                        <span className="font-bold text-slate-700 dark:text-slate-200 truncate max-w-[150px]" title={emp.status === 'offline' ? 'Offline' : emp.activeWindow}>
+-                                                            {emp.status === 'offline' ? 'Offline' : (emp.activeApp || 'Active')}
+-                                                        </span>
+-                                                        <span className="text-[10px] text-slate-400 truncate max-w-[150px]">
+-                                                            {emp.status === 'offline' ? 'No recent activity' : (emp.activeWindow || 'In progress...')}
+-                                                        </span>
+-                                                    </div>
+-                                                </td>
+-                                                <td className="px-6 py-4">
+-                                                    <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-400">
+-                                                        <MapPin size={12} className="text-rose-400" />
+-                                                        <span className="font-medium">{emp.location || 'Remote'}</span>
+-                                                    </div>
+-                                                </td>
+-                                                <td className="px-6 py-4 font-bold text-slate-600 dark:text-slate-300">{emp.team || '—'}</td>
+-                                                <td className="px-6 py-4">
+-                                                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
+-                                                        emp.status === 'online' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400' :
+-                                                        emp.status === 'idle' ? 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400' :
+-                                                        emp.status === 'break' ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-400' :
+-                                                        'bg-slate-100 text-slate-500 dark:bg-slate-800'
+-                                                    }`}>
+-                                                        <span className={`h-1.5 w-1.5 rounded-full ${statusColors[emp.status] || statusColors.offline}`} />
+-                                                        {emp.status}
+-                                                    </span>
+-                                                </td>
+-                                                <td className="px-6 py-4">
+-                                                    <div className="flex items-center gap-3">
+-                                                        <div className="flex-1 max-w-[80px] h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+-                                                            <div className="h-full bg-primary-500 rounded-full transition-all" style={{ width: `${emp.productivityScore || 0}%` }} />
+-                                                        </div>
+-                                                        <span className="font-black text-slate-700 dark:text-slate-300 min-w-[32px]">{emp.productivityScore || 0}%</span>
+-                                                    </div>
+-                                                </td>
+-                                                <td className="px-6 py-4">
+-                                                    <div className="flex items-center gap-3">
+-                                                        <div className="flex-1 max-w-[80px] h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+-                                                            <div className="h-full bg-indigo-400 rounded-full transition-all" style={{ width: `${emp.utilizationScore || 0}%` }} />
+-                                                        </div>
+-                                                        <span className="font-black text-slate-700 dark:text-slate-300 min-w-[32px]">{emp.utilizationScore || 0}%</span>
+-                                                    </div>
+-                                                </td>
+-                                                <td className="px-6 py-4 text-center">
+-                                                     <div className="flex justify-center gap-2">
+-                                                        <button 
+-                                                            onClick={() => navigate(`${rolePath}/screenshots?employee=${emp.id}`)}
+-                                                            className="p-2 bg-emerald-500 text-white rounded-lg hover:scale-110 transition-transform shadow-md"
+-                                                            title="View Screenshots"
+-                                                        >
+-                                                            <Video size={14} />
+-                                                        </button>
+-                                                     </div>
+-                                                 </td>
+-                                            </tr>
+-                                        ))}
+-                                    </tbody>
+-                                </table>
+-                                {filtered.length === 0 && (
+-                                    <div className="py-16 text-center text-slate-400 font-bold text-sm">No employees match your search.</div>
+-                                )}
+-                            </div>
+-                        </div>
+-                    ) : (
+-                        /* Grid View */
+-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+-                            {filtered.length === 0 ? (
+-                                <div className="col-span-full py-16 text-center text-slate-400 font-bold text-sm">No employees match your search.</div>
+-                            ) : filtered.map((emp) => (
+-                                <div key={emp.id} className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm p-5 flex flex-col gap-4 hover:shadow-md transition-shadow">
+-                                    <div className="flex items-center gap-3">
+-                                        <div className="relative">
+-                                            <div className="h-12 w-12 rounded-full overflow-hidden border-2 border-slate-200 dark:border-slate-700 bg-primary-100 dark:bg-primary-950/40 flex items-center justify-center">
+-                                                {emp.avatar ? (
+-                                                    <img src={emp.avatar} alt={emp.name} className="w-full h-full object-cover"
+-                                                        onError={e => { e.target.style.display='none'; e.target.nextSibling.style.display='flex'; }}
+-                                                    />
+-                                                ) : null}
+-                                                <span className={`text-[10px] font-black text-primary-700 dark:text-primary-300 ${emp.avatar ? 'hidden' : 'flex'}`}>
+-                                                    {emp.initials || (emp.name || '?').split(' ').map(n => n[0]).join('').toUpperCase().slice(0,2)}
+-                                                </span>
+-                                            </div>
+-                                            <span className={`absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-white dark:border-slate-900 ${statusColors[emp.status] || statusColors.offline}`} />
+-                                        </div>
+-                                        <div className="min-w-0">
+-                                            <p className="font-black text-sm text-slate-900 dark:text-white truncate">{emp.name}</p>
+-                                            <p className="text-[11px] font-semibold text-slate-400 truncate">{emp.team || '—'}</p>
+-                                        </div>
+-                                        <span className={`ml-auto shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${
+-                                            emp.status === 'online' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400' :
+-                                            emp.status === 'idle' ? 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400' :
+-                                            emp.status === 'break' ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-400' :
+-                                            'bg-slate-100 text-slate-500 dark:bg-slate-800'
+-                                        }`}>
+-                                            <span className={`h-1.5 w-1.5 rounded-full ${statusColors[emp.status] || statusColors.offline}`} />
+-                                            {emp.status}
+-                                        </span>
+-                                    </div>
+-
+-                                    {/* Activity and Location */}
+-                                    <div className="bg-slate-50 dark:bg-slate-800/50 rounded-lg p-2 flex flex-col gap-1.5 border border-slate-100 dark:border-slate-800">
+-                                        <div className="flex items-center gap-2 text-[10px] font-bold text-slate-500 uppercase tracking-tight">
+-                                            <Activity size={10} className="text-primary-600" />
+-                                            <span className="truncate max-w-[100px]">{emp.status === 'offline' ? 'Offline' : (emp.activeApp || 'Idle')}</span>
+-                                            <span className="text-slate-300 dark:text-slate-700">|</span>
+-                                            <MapPin size={10} className="text-rose-400" />
+-                                            <span className="truncate max-w-[70px]">{emp.location || 'Remote'}</span>
+-                                        </div>
+-                                        <p className="text-[10px] text-slate-400 truncate italic px-1">
+-                                            {emp.status === 'offline' ? 'No recent activity' : (emp.activeWindow || 'Waiting for activity...')}
+-                                        </p>
+-                                    </div>
+-
+-
+-                                    <div className="space-y-2">
+-                                        <div>
+-                                            <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1">
+-                                                <span>Productivity</span><span className="text-primary-600">{emp.productivityScore || 0}%</span>
+-                                            </div>
+-                                            <div className="h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+-                                                <div className="h-full bg-primary-500 rounded-full transition-all" style={{ width: `${emp.productivityScore || 0}%` }} />
+-                                            </div>
+-                                        </div>
+-                                        <div>
+-                                            <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1">
+-                                                <span>Utilization</span><span className="text-indigo-500">{emp.utilizationScore || 0}%</span>
+-                                            </div>
+-                                            <div className="h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+-                                                <div className="h-full bg-indigo-400 rounded-full transition-all" style={{ width: `${emp.utilizationScore || 0}%` }} />
+-                                            </div>
+-                                        </div>
+-                                    </div>
+-                                    <div className="flex gap-2 mt-auto pt-2">
+-                                        <button 
+-                                            onClick={() => navigate(`${rolePath}/screenshots?employee=${emp.id}`)}
+-                                            className="flex-1 flex items-center justify-center gap-2 py-2 bg-emerald-500 text-white rounded-lg text-xs font-black shadow-md hover:bg-emerald-600 transition-colors"
+-                                        >
+-                                            <Video size={14} /> VIEW SCREENSHOTS
+-                                        </button>
+-                                    </div>
+-                                </div>
+-                            ))}
+-                        </div>
+-                    )}
+-                </>
+-            ) : (
+-                <LiveMapView />
+-            )}
+-
+-            <AddEmployeeModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onAdd={handleAddEmployee} />
+-        </div>
+-    );
+-}
+
+
+==========================================================
+NEW FILE: backend/src/utils/accessControl.js
+==========================================================
+const prisma = require('../config/db');
+
+/**
+ * Central authorization check for accessing another employee's data.
+ * - Agent tokens may only access their own employee record.
+ * - JWT users may access their own data; ADMIN/MANAGER may access
+ *   employees within the same organization only.
+ * Roles are always re-read from the DB so stale tokens cannot escalate.
+ *
+ * @param {Object} req - Express request (requires req.user from auth middleware)
+ * @param {string} targetEmployeeId - Employee whose data is being accessed
+ * @returns {Promise<boolean>}
+ */
+const canAccessEmployeeData = async (req, targetEmployeeId) => {
+    const requester = req.user || {};
+    if (!targetEmployeeId) return false;
+
+    if (requester.role === 'AGENT') {
+        return requester.employeeId === targetEmployeeId;
+    }
+
+    let requesterEmployeeId = requester.employeeId;
+    if (!requesterEmployeeId && requester.userId) {
+        const user = await prisma.user.findUnique({
+            where: { id: requester.userId },
+            select: { employeeId: true }
+        });
+        requesterEmployeeId = user?.employeeId;
+    }
+    if (!requesterEmployeeId) return false;
+    if (requesterEmployeeId === targetEmployeeId) return true;
+
+    const [requesterEmp, targetEmp] = await Promise.all([
+        prisma.employee.findUnique({
+            where: { id: requesterEmployeeId },
+            select: { role: true, organizationId: true }
+        }),
+        prisma.employee.findUnique({
+            where: { id: targetEmployeeId },
+            select: { organizationId: true }
+        })
+    ]);
+
+    if (!requesterEmp || !targetEmp) return false;
+    if (!targetEmp.organizationId || targetEmp.organizationId !== requesterEmp.organizationId) return false;
+
+    return requesterEmp.role === 'ADMIN' || requesterEmp.role === 'MANAGER';
+};
+
+module.exports = { canAccessEmployeeData };
+
+
+==========================================================
+NEW FILE: backend/src/utils/fileSignature.js
+==========================================================
+const crypto = require('crypto');
+const { JWT_SECRET } = require('../config/env');
+
+const DEFAULT_TTL_SECONDS = 60 * 60; // 1 hour
+
+const computeSignature = (canonicalPath, expires) =>
+    crypto.createHmac('sha256', JWT_SECRET).update(`${canonicalPath}:${expires}`).digest('hex');
+
+/**
+ * Sign a local /uploads/... URL with a short-lived HMAC signature so private
+ * files can be served to <img>/<video> tags without exposing them publicly.
+ * Non-local URLs (e.g. Cloudinary) are returned unchanged.
+ */
+const signLocalUrl = (url, ttlSeconds = DEFAULT_TTL_SECONDS) => {
+    if (typeof url !== 'string' || !url.startsWith('/uploads/')) return url;
+    const expires = Math.floor(Date.now() / 1000) + ttlSeconds;
+    const sig = computeSignature(url, expires);
+    return `${url}?exp=${expires}&sig=${sig}`;
+};
+
+/**
+ * Verify a signature generated by signLocalUrl for the given canonical path.
+ */
+const verifyFileSignature = (canonicalPath, expires, sig) => {
+    if (!canonicalPath || !expires || !sig || typeof sig !== 'string') return false;
+    const expNum = parseInt(expires, 10);
+    if (!Number.isFinite(expNum) || expNum < Math.floor(Date.now() / 1000)) return false;
+    const expected = computeSignature(canonicalPath, expires);
+    const sigBuffer = Buffer.from(sig);
+    const expectedBuffer = Buffer.from(expected);
+    if (sigBuffer.length !== expectedBuffer.length) return false;
+    return crypto.timingSafeEqual(sigBuffer, expectedBuffer);
+};
+
+/**
+ * Convenience: sign imageUrl/videoUrl fields on a record (or array of records)
+ * in place, leaving remote URLs untouched.
+ */
+const signRecordUrls = (record) => {
+    if (!record || typeof record !== 'object') return record;
+    if (record.imageUrl) record.imageUrl = signLocalUrl(record.imageUrl);
+    if (record.screenshotUrl) record.screenshotUrl = signLocalUrl(record.screenshotUrl);
+    if (record.videoUrl) record.videoUrl = signLocalUrl(record.videoUrl);
+    return record;
+};
+
+const signRecordList = (list) => (Array.isArray(list) ? list.map(signRecordUrls) : list);
+
+module.exports = { signLocalUrl, verifyFileSignature, signRecordUrls, signRecordList };
+
+
+==========================================================
+NEW FILE: docs/DEPLOYMENT.md
+==========================================================
+# Deployment & Operations Guide
+
+**Project:** Insightfull — Employee Monitoring System
+**Last updated:** 2026-11-24 (post security remediation)
+
+---
+
+## 1. Environment Variables
+
+### Backend (`backend/.env`)
+| Variable | Required | Description |
+|---|---|---|
+| `PORT` | No (default 5000) | API port |
+| `DATABASE_URL` | **Yes** | MySQL connection string `mysql://user:pass@host:port/db` |
+| `JWT_SECRET` | **Yes (production)** | Server refuses to boot in production without it. Generate: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
+| `NODE_ENV` | Yes | `production` / `development` |
+| `FRONTEND_URL` | **Yes** | Comma-separated CORS allowlist, e.g. `https://app.client.com` |
+| `CLOUDINARY_CLOUD_NAME` / `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` | Recommended | Screenshot cloud storage. Without these, screenshots fall back to local disk (served only via signed URLs) |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `SMTP_FROM` | Recommended | Without these, emails are SIMULATED (logged, not delivered) and a boot warning is printed |
+| `API_PUBLIC_URL` | Recommended | Public URL of the backend (used in emails/installer) |
+
+### Frontend (`frontend/.env`)
+| Variable | Required | Description |
+|---|---|---|
+| `VITE_API_URL` | **Yes (production)** | e.g. `https://api.client.com/api`. Defaults to `http://localhost:5000/api` |
+
+### Desktop Agent
+Server URL resolution order (first match wins):
+1. `API_URL` environment variable
+2. `server-config.json` next to the executable (`{ "SERVER_URL": "https://api.client.com" }`)
+3. Fallback: `http://localhost:5000`
+
+Set `server-config.json` before building the installer for the client's environment. Invalid URLs are rejected with a warning.
+
+---
+
+## 2. Database Migrations (baseline strategy)
+
+The project uses a **baseline migration**: `backend/prisma/migrations/000000000000_baseline/migration.sql`
+was generated from `schema.prisma` and matches the current production schema.
+
+**Existing database (already has data — e.g. restored from dump):**
+```bash
+# 1. BACKUP FIRST (see section 3)
+# 2. Mark the baseline as applied WITHOUT running it:
+npx prisma migrate resolve --applied 000000000000_baseline
+# 3. Future schema changes:
+npx prisma migrate dev --name <change_name>
+```
+
+**Fresh empty database:**
+```bash
+npx prisma migrate deploy
+```
+
+**Rules:** never run `prisma migrate reset` or `db push --force-reset` against real data;
+always test migrations on a staging copy first; always take a verified backup before migrating.
+
+---
+
+## 3. Backup & Recovery
+
+**Backup (MySQL/MariaDB):**
+```bash
+mysqldump -u <user> -p <database> > backup_$(date +%F).sql
+```
+Also back up `backend/public/uploads/` if Cloudinary is not configured (local screenshot storage).
+
+**Restore:**
+```bash
+mysql -u <user> -p <database> < backup_YYYY-MM-DD.sql
+```
+
+**Recovery checklist:** restore DB → restore uploads dir → set env vars → `npx prisma generate && npx prisma migrate resolve --applied 000000000000_baseline` → start server → verify `/api/agent/health`.
+
+---
+
+## 4. Credential Rotation Checklist (manual, provider dashboards)
+
+The following credentials were exposed in git history (commit `4a5e292`) and MUST be rotated
+before client delivery. Deleting them from source does NOT invalidate them.
+
+- [ ] **Cloudinary** (`cloud_name: dw48hcxi5`): Cloudinary Dashboard → Settings → API Keys →
+      regenerate API secret. Consider migrating screenshots to a fresh cloud/account, since old
+      delivery URLs remain publicly accessible.
+- [ ] **Railway MySQL**: rotate the database password (Railway → service → Variables → regenerate)
+      or decommission the old database if migrating.
+- [ ] **Any JWT_SECRET** that was ever committed or shared → generate a fresh one per environment.
+- [ ] After rotation: update `backend/.env` (never commit it), redeploy, verify uploads/login.
+- [ ] Optional hardening: rewrite git history (`git filter-repo`) or recreate the repo to purge
+      secrets from history — coordinate with all collaborators first.
+
+---
+
+## 5. Desktop Agent Code Signing (manual, certificate required)
+
+The agent installer is currently unsigned; Windows SmartScreen will warn users.
+
+1. Obtain a code-signing certificate (OV/EV) from a trusted CA (e.g. DigiCert, Sectigo).
+   EV certificates give immediate SmartScreen reputation.
+2. Store the certificate securely (hardware token / CI secret store) — never in the repo.
+3. Configure `agent/package.json` → electron-builder:
+   ```json
+   "win": { "certificateFile": "<path-from-secure-store>", "signingHashAlgorithms": ["sha256"] }
+   ```
+   or set `CSC_LINK` / `CSC_KEY_PASSWORD` environment variables in the release pipeline.
+4. Build with `npm run dist` inside `agent/` on the authorized release machine.
+5. Verify: `signtool verify /pa "EMS-Tracker-latest.exe"`.
+6. Update `GITHUB_AGENT_DOWNLOAD_URL` in `backend/src/modules/agent/agent.controller.js`
+   to the client's release location, and rebuild/redeploy the backend.
+
+---
+
+## 6. Production Startup Checklist
+
+1. `backend/.env` fully populated (see section 1) — server **will refuse to boot** without `JWT_SECRET` in production.
+2. `npm ci && npx prisma generate && npx prisma migrate deploy` (backend).
+3. `npm ci && npm run build` (frontend) — serve `dist/` behind the same origin as `FRONTEND_URL` or add its origin to `FRONTEND_URL`.
+4. Start backend; verify boot log has **no** `[SECURITY]` or `[EmailService] SMTP is not configured` warnings.
+5. Smoke test: login → dashboard → screenshots page → invite a test employee.
+6. Install desktop agent with correct `server-config.json`; verify heartbeat in Monitoring Agents page.
+
+
+==========================================================
+NEW FILE: backend/prisma/migrations/migration_lock.toml
+==========================================================
+provider = "mysql"
+
+==========================================================
+NEW FILE: backend/prisma/migrations/000000000000_baseline/migration.sql (1067 lines - baseline schema, shown first 50 lines)
+==========================================================
+-- CreateTable
+CREATE TABLE `users` (
+    `id` VARCHAR(191) NOT NULL,
+    `email` VARCHAR(191) NOT NULL,
+    `password` VARCHAR(191) NOT NULL,
+    `role` ENUM('ADMIN', 'MANAGER', 'EMPLOYEE') NOT NULL DEFAULT 'EMPLOYEE',
+    `name` VARCHAR(191) NULL,
+    `avatar` TEXT NULL,
+    `employeeId` VARCHAR(191) NULL,
+    `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `updatedAt` DATETIME(3) NOT NULL,
+
+    UNIQUE INDEX `users_email_key`(`email`),
+    UNIQUE INDEX `users_employeeId_key`(`employeeId`),
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- CreateTable
+CREATE TABLE `organizations` (
+    `id` VARCHAR(191) NOT NULL,
+    `legalName` VARCHAR(191) NOT NULL,
+    `workspaceId` VARCHAR(191) NOT NULL,
+    `industry` VARCHAR(191) NULL,
+    `organizationSize` VARCHAR(191) NULL,
+    `timeZone` VARCHAR(191) NOT NULL DEFAULT 'UTC',
+    `workStartTime` VARCHAR(191) NOT NULL DEFAULT '09:00',
+    `workEndTime` VARCHAR(191) NOT NULL DEFAULT '18:00',
+    `workDays` VARCHAR(191) NOT NULL DEFAULT 'Monday,Tuesday,Wednesday,Thursday,Friday',
+    `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `updatedAt` DATETIME(3) NOT NULL,
+
+    UNIQUE INDEX `organizations_workspaceId_key`(`workspaceId`),
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- CreateTable
+CREATE TABLE `screenshot_settings` (
+    `id` VARCHAR(191) NOT NULL,
+    `organizationId` VARCHAR(191) NOT NULL,
+    `randomShifts` BOOLEAN NOT NULL DEFAULT false,
+    `excludeAdmin` BOOLEAN NOT NULL DEFAULT true,
+    `globalBlur` BOOLEAN NOT NULL DEFAULT false,
+    `frequency` INTEGER NOT NULL DEFAULT 5,
+    `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `updatedAt` DATETIME(3) NOT NULL,
+
+    UNIQUE INDEX `screenshot_settings_organizationId_key`(`organizationId`),
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+

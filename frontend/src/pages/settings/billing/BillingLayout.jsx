@@ -25,6 +25,13 @@ export function BillingLayout() {
 
     return (
         <div className="min-h-screen bg-[#fcfdfe] dark:bg-slate-950 pb-20">
+            {/* Demo Mode Notice — no real payment processing is connected */}
+            <div className="w-full bg-sky-50 dark:bg-sky-900/20 border-b border-sky-100 dark:border-sky-800/30 py-2 px-6 flex items-center justify-center gap-2">
+                <CreditCard size={14} className="text-sky-500 shrink-0" />
+                <p className="text-xs font-semibold text-sky-700 dark:text-sky-300">
+                    Demo mode: billing and subscriptions are simulated. No real payments are processed.
+                </p>
+            </div>
             {/* Trial Banner */}
             {isTrial && trialDaysLeft > 0 && (
                 <div className="w-full bg-amber-50 dark:bg-amber-900/20 border-b border-amber-100 dark:border-amber-800/30 py-3 px-6 flex items-center justify-center gap-3 animate-in fade-in duration-500">

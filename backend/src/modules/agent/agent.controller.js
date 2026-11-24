@@ -6,6 +6,8 @@ const bcrypt = require('bcrypt');
 const prisma = require('../../config/db');
 const { getIO, updateSessionStatus } = require('../../socket/server');
 const { getOrganizationId } = require('../../utils/orgId');
+const { generateAgentToken, verifyAgentToken } = require('../../utils/agentToken');
+const { verifyToken } = require('../../utils/jwt');
 
 const invitationService = require('../auth/invitation.service');
 const { sendIdleAlertEmail } = require('../../utils/email.service');
@@ -56,29 +58,14 @@ const register = async (req, res) => {
         }
 
         if (!user) {
-            console.log(`User record not found for: ${email}. Checking for existing employee...`);
-
-            let existingEmployee = invitedEmployee || existingEmpCheck;
-
-            if (!existingEmployee) {
-                console.log(`Creating new employee for: ${email}`);
-                let org = await prisma.organization.findUnique({ where: { id: 'default-org-id' } });
-                if (!org) {
-                    org = await prisma.organization.findFirst();
-                }
-                if (!org) throw new Error('No organization found in system. Please setup organization first.');
-
-                existingEmployee = await prisma.employee.create({
-                    data: {
-                        fullName: name || email.split('@')[0],
-                        email,
-                        organizationId: org.id,
-                        role: 'EMPLOYEE',
-                        status: 'ACTIVE',
-                        computerType: 'COMPANY',
-                    }
-                });
+            // No user account yet: a valid invitation is required to activate the account
+            if (!invitedEmployee) {
+                return errorResponse(res, 'Invitation token is required to activate this account', 403);
             }
+
+            console.log(`User record not found for: ${email}. Activating invited employee...`);
+
+            const existingEmployee = invitedEmployee;
 
             console.log(`Creating user record for employee: ${existingEmployee.fullName}`);
             // Create User linked to the employee
@@ -168,8 +155,7 @@ const register = async (req, res) => {
         });
 
         if (existingDeviceAgent && existingDeviceAgent.employeeId !== targetEmployeeId) {
-            console.log(`Removing old agent record for device: ${effectiveDeviceId} (previously employee: ${existingDeviceAgent.employeeId})`);
-            await prisma.agent.delete({ where: { deviceId: effectiveDeviceId } });
+            return errorResponse(res, 'Device ID is already registered to another employee', 409);
         }
 
         // 3. Register Agent
@@ -180,7 +166,7 @@ const register = async (req, res) => {
         const agent = await agentService.registerAgent(targetEmployeeId, effectiveDeviceId, formattedSystemInfo);
 
         // Simple token for agent security
-        const agentToken = Buffer.from(`${targetEmployeeId}:${effectiveDeviceId}:INSIGHTFUL`).toString('base64');
+        const agentToken = generateAgentToken(targetEmployeeId, effectiveDeviceId);
 
         return successResponse(res, { agent, token: agentToken }, 'Agent registration received and approved');
     } catch (error) {
@@ -199,6 +185,12 @@ const heartbeat = async (req, res) => {
             include: { employee: true }
         });
         if (!agent) return errorResponse(res, 'Agent not found', 404);
+
+        // Heartbeat must be authenticated with the device's agent token
+        const heartbeatAuth = req.headers['x-agent-auth'];
+        if (!heartbeatAuth || !verifyAgentToken(heartbeatAuth, agent.employeeId, agent.deviceId)) {
+            return errorResponse(res, 'Unauthorized', 401);
+        }
 
         // Check if Employee is Deactivated
         if (agent.employee?.status === 'DEACTIVATED') {
@@ -272,19 +264,8 @@ const logActivity = async (req, res) => {
 
         // Token verification
         if (!authHeader) return errorResponse(res, 'Unauthorized', 401);
-        try {
-            const tokenBuffer = Buffer.from(authHeader, 'base64');
-            const parts = tokenBuffer.toString('utf8').split(':');
-            const isValidAgentToken =
-                tokenBuffer.toString('base64') === authHeader &&
-                parts.length === 3 &&
-                parts[0] === employeeId &&
-                parts[1] === agent.deviceId &&
-                parts[2] === 'INSIGHTFUL';
-            if (!isValidAgentToken) {
-                return errorResponse(res, 'Unauthorized', 401);
-            }
-        } catch (e) {
+        const parsedToken = verifyAgentToken(authHeader, employeeId, agent.deviceId);
+        if (!parsedToken) {
             return errorResponse(res, 'Unauthorized', 401);
         }
 
@@ -507,6 +488,22 @@ const stopTracking = async (req, res) => {
         const { employeeId } = req.body;
         if (!employeeId) return errorResponse(res, 'Employee ID is required', 400);
 
+        // Authentication required: agent token for this employee, or a JWT for self / ADMIN / MANAGER
+        const authHeader = req.headers['x-agent-auth'] || req.headers.authorization;
+        const raw = authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : authHeader;
+        let isAuthorized = false;
+        if (raw) {
+            if (verifyAgentToken(raw, employeeId)) {
+                isAuthorized = true;
+            } else {
+                const jwtUser = verifyToken(raw);
+                if (jwtUser && (jwtUser.employeeId === employeeId || jwtUser.role === 'ADMIN' || jwtUser.role === 'MANAGER')) {
+                    isAuthorized = true;
+                }
+            }
+        }
+        if (!isAuthorized) return errorResponse(res, 'Unauthorized', 401);
+
         await agentService.stopTracking(employeeId);
         return successResponse(res, null, 'Tracking stopped and employee clocked out');
     } catch (error) {
@@ -529,38 +526,24 @@ const handleIdleActivity = async (req, res) => {
             ? taskId.trim()
             : null;
 
-        // Token verification (supports both Desktop Agent Base64 token and Web Browser JWT token)
-        if (authHeader) {
-            const raw = authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : authHeader;
-            let isAuthorized = false;
+        // Token verification (always required): Desktop Agent HMAC token, or a JWT
+        // bound to the same employee (or an ADMIN/MANAGER acting on their behalf)
+        const raw = authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : authHeader;
+        if (!raw) {
+            return errorResponse(res, 'Unauthorized agent request', 401);
+        }
 
-            // 1. Check if Desktop Agent token
-            try {
-                const decoded = Buffer.from(raw, 'base64').toString('ascii');
-                if (decoded.includes('INSIGHTFUL') && decoded.includes(employeeId)) {
-                    isAuthorized = true;
-                }
-            } catch (e) { }
+        let isAuthorized = Boolean(verifyAgentToken(raw, employeeId));
 
-            // 2. Check if valid JWT (Web browser session)
-            if (!isAuthorized) {
-                try {
-                    const { verifyToken } = require('../../utils/jwt');
-                    const jwtUser = verifyToken(raw);
-                    if (jwtUser) {
-                        isAuthorized = true;
-                    }
-                } catch (jwtErr) { }
-            }
-
-            // 3. Allow WEB_AGENT source
-            if (!isAuthorized && source === 'WEB_AGENT') {
+        if (!isAuthorized) {
+            const jwtUser = verifyToken(raw);
+            if (jwtUser && (jwtUser.employeeId === employeeId || jwtUser.role === 'ADMIN' || jwtUser.role === 'MANAGER')) {
                 isAuthorized = true;
             }
+        }
 
-            if (!isAuthorized) {
-                return errorResponse(res, 'Unauthorized agent request', 401);
-            }
+        if (!isAuthorized) {
+            return errorResponse(res, 'Unauthorized agent request', 401);
         }
 
         // Find Employee with organization, team, and agent info

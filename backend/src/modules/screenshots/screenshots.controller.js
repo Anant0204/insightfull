@@ -16,6 +16,25 @@ const screenshotsController = {
                 return errorResponse(res, 'employeeId is required', 400);
             }
 
+            // Ownership enforcement: employees may only create screenshots for themselves;
+            // managers/admins may only target employees within their own organization
+            if (req.user.role === 'EMPLOYEE') {
+                if (employeeId !== req.user.employeeId) {
+                    return errorResponse(res, 'Forbidden', 403);
+                }
+            } else {
+                const targetEmp = await prisma.employee.findUnique({
+                    where: { id: employeeId },
+                    select: { organizationId: true }
+                });
+                if (!targetEmp) {
+                    return errorResponse(res, 'Employee not found', 404);
+                }
+                if (targetEmp.organizationId !== organizationId) {
+                    return errorResponse(res, 'Forbidden', 403);
+                }
+            }
+
             if (!imageUrl && !req.file) {
                  return errorResponse(res, 'imageUrl or image file is required', 400);
             }

@@ -3,6 +3,7 @@ const router = express.Router();
 const agentController = require('./agent.controller');
 const authenticate = require('../../middlewares/auth');
 const { verifyToken } = require('../../utils/jwt');
+const { verifyAgentToken } = require('../../utils/agentToken');
 const { errorResponse } = require('../../utils/response');
 
 const prisma = require('../../config/db');
@@ -15,15 +16,18 @@ const combinedAuth = async (req, res, next) => {
 
         const token = authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : authHeader;
 
-        // 1. Try Agent Token (Base64)
-        try {
-            const decoded = Buffer.from(token, 'base64').toString('ascii');
-            if (decoded.includes('INSIGHTFUL')) {
-                const [empId, devId] = decoded.split(':');
+        // 1. Try Agent Token (HMAC-signed, bound to a registered device)
+        const parsed = verifyAgentToken(token);
+        if (parsed) {
+            const agentRecord = await prisma.agent.findUnique({
+                where: { employeeId: parsed.employeeId },
+                select: { deviceId: true }
+            });
 
+            if (agentRecord && agentRecord.deviceId === parsed.deviceId) {
                 // Verify employee is not deactivated
                 const emp = await prisma.employee.findUnique({
-                    where: { id: empId },
+                    where: { id: parsed.employeeId },
                     select: { status: true }
                 });
                 if (emp && emp.status === 'DEACTIVATED') {
@@ -34,11 +38,9 @@ const combinedAuth = async (req, res, next) => {
                     });
                 }
 
-                req.user = { employeeId: empId, deviceId: devId, role: 'AGENT' };
+                req.user = { employeeId: parsed.employeeId, deviceId: parsed.deviceId, role: 'AGENT' };
                 return next();
             }
-        } catch (e) {
-            // Not a base64 agent token, continue to JWT
         }
 
         // 2. Try JWT Token

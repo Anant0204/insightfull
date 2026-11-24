@@ -502,7 +502,7 @@ function tryFallbackScreenshot(resolve, reject) {
 
 // ─── Heartbeat Mechanism (Task & Project-Aware) ──────────────────────────────
 async function sendHeartbeat() {
-    if (!agentState.deviceId) return;
+    if (!agentState.deviceId || !agentState.agentToken) return;
     try {
         const payload = {
             deviceId: agentState.deviceId,
@@ -511,7 +511,10 @@ async function sendHeartbeat() {
             autoMappedProjectName: agentState.autoMappedProjectName || null
         };
 
-        const res = await axios.post(`${API_URL}/api/agent/heartbeat`, payload, { timeout: 8000 });
+        const res = await axios.post(`${API_URL}/api/agent/heartbeat`, payload, {
+            headers: { 'X-Agent-Auth': agentState.agentToken },
+            timeout: 8000
+        });
         console.log(`[Heartbeat] Pulse sent for device ${agentState.deviceId} (Active Task: ${agentState.activeTaskId || 'None'}, AutoProject: ${agentState.autoMappedProjectName || 'None'}). Status: ${res.data?.message || 'OK'}`);
     } catch (err) {
         console.warn(`[Heartbeat] Failed: ${err.response?.data?.message || err.message}`);

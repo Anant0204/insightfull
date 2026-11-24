@@ -17,6 +17,13 @@ if (!databaseUrl || !databaseUrl.startsWith('mysql://')) {
     process.env.DATABASE_URL = databaseUrl;
 }
 
+if (!process.env.JWT_SECRET) {
+    if ((process.env.NODE_ENV || 'development') === 'production') {
+        throw new Error('JWT_SECRET environment variable is required in production');
+    }
+    console.warn('[SECURITY] JWT_SECRET is not set — using insecure development fallback. Set JWT_SECRET!');
+}
+
 module.exports = {
     PORT: process.env.PORT || 5000,
     DATABASE_URL: process.env.DATABASE_URL,

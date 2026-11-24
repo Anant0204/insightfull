@@ -1,5 +1,6 @@
 const { Server } = require('socket.io');
 const { verifyToken } = require('../utils/jwt');
+const { verifyAgentToken } = require('../utils/agentToken');
 const prisma = require('../config/db');
 const logger = require('../utils/logger');
 const activityService = require('../modules/activity/activity.service');
@@ -30,39 +31,36 @@ const initSocketServer = (server) => {
             return next(new Error('Authentication required'));
         }
 
-        // 1. Try Agent Token (Base64)
-        try {
-            const decoded = Buffer.from(token, 'base64').toString('ascii');
-            if (decoded.includes('INSIGHTFUL')) {
-                const [empId, devId] = decoded.split(':');
-                prisma.employee.findUnique({
-                    where: { id: empId },
-                    select: { organizationId: true, teamId: true }
-                }).then(emp => {
-                    socket.user = { 
-                        id: `agent_${empId}`, 
-                        userId: `agent_${empId}`,
-                        employeeId: empId, 
-                        deviceId: devId,
-                        role: 'AGENT',
-                        organizationId: emp?.organizationId || null,
-                        teamId: emp?.teamId || null
-                    };
-                    return next();
-                }).catch(() => {
-                    socket.user = { 
-                        id: `agent_${empId}`, 
-                        userId: `agent_${empId}`,
-                        employeeId: empId, 
-                        deviceId: devId,
-                        role: 'AGENT' 
-                    };
-                    return next();
-                });
-                return;
-            }
-        } catch (e) {
-            // Not a base64 agent token, continue to JWT
+        // 1. Try Agent Token (HMAC-signed)
+        const parsedAgentToken = verifyAgentToken(token);
+        if (parsedAgentToken) {
+            const empId = parsedAgentToken.employeeId;
+            const devId = parsedAgentToken.deviceId;
+            prisma.employee.findUnique({
+                where: { id: empId },
+                select: { organizationId: true, teamId: true }
+            }).then(emp => {
+                socket.user = {
+                    id: `agent_${empId}`,
+                    userId: `agent_${empId}`,
+                    employeeId: empId,
+                    deviceId: devId,
+                    role: 'AGENT',
+                    organizationId: emp?.organizationId || null,
+                    teamId: emp?.teamId || null
+                };
+                return next();
+            }).catch(() => {
+                socket.user = {
+                    id: `agent_${empId}`,
+                    userId: `agent_${empId}`,
+                    employeeId: empId,
+                    deviceId: devId,
+                    role: 'AGENT'
+                };
+                return next();
+            });
+            return;
         }
 
         // 2. Try JWT Token

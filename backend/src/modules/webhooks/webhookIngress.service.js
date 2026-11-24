@@ -21,7 +21,7 @@ class WebhookIngressEngine {
      * Verify incoming webhook authenticity across diverse providers
      */
     verifySignature(provider, req, configuredSecret) {
-        if (!configuredSecret) return { verified: true, reason: 'No secret configured (Open Mode)' };
+        if (!configuredSecret) return { verified: false, reason: 'Webhook secret not configured' };
 
         const p = provider.toLowerCase();
 
@@ -83,7 +83,7 @@ class WebhookIngressEngine {
 
         // Verify Signature
         const verification = this.verifySignature(p, req, secret);
-        if (!verification.verified && secret) {
+        if (!verification.verified) {
             this.recordLog({
                 id: eventId,
                 provider: p,

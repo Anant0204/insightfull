@@ -73,21 +73,27 @@ async function run() {
     async function sendPulse() {
         const active = await detectActiveApp();
         for (const target of monitoredTargets) {
+            if (!target.token) {
+                console.warn(`[AgentDaemon] Skipping ${target.name}: no server-issued agent token configured (register the device and set 'token').`);
+                continue;
+            }
             try {
                 // 1. Heartbeat Pulse
                 await fetch(`${API_URL}/api/agent/heartbeat`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-agent-auth': target.token
+                    },
                     body: JSON.stringify({ deviceId: target.deviceId })
                 });
 
                 // 2. Real Active App & Activity
-                const agentToken = Buffer.from(`${target.employeeId}:${target.deviceId}:INSIGHTFUL`).toString('base64');
                 await fetch(`${API_URL}/api/agent/activity`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'x-agent-auth': agentToken
+                        'x-agent-auth': target.token
                     },
                     body: JSON.stringify({
                         employeeId: target.employeeId,

@@ -1300,6 +1300,7 @@ const ScreenshotCard = memo(({ id, employeeId, employee, timestamp, image, isBlu
 
             export function ScreenshotMonitoring() {
     const {user, role} = useAuthStore();
+    const [searchParams] = useSearchParams();
             const {socket, employees: contextEmployees, teams: contextTeams, projects: contextProjects, screenshots: contextScreenshots, deleteScreenshot, addNotification } = useRealTime();
 
             // Live Monitoring State
@@ -1582,16 +1583,30 @@ const ScreenshotCard = memo(({ id, employeeId, employee, timestamp, image, isBlu
             const [activeFilterModal, setActiveFilterModal] = useState(null); // 'employees', 'teams', 'projects', etc.
 
             // Selected Filters State (Stores IDs)
-            const [selectedFilters, setSelectedFilters] = useState({
-              employees: [],
-            teams: [],
-            projects: [],
-            apps: [],
-            tasks: [],
-            screenshotTypes: [],
-            productivityTypes: [],
-            category: []
-  });
+            const [selectedFilters, setSelectedFilters] = useState(() => {
+              const urlEmp = searchParams.get('employee') || searchParams.get('employeeId');
+              return {
+                employees: urlEmp ? [urlEmp] : [],
+                teams: [],
+                projects: [],
+                apps: [],
+                tasks: [],
+                screenshotTypes: [],
+                productivityTypes: [],
+                category: []
+              };
+            });
+
+            // Keep selectedFilters in sync if URL query param changes
+            useEffect(() => {
+              const urlEmp = searchParams.get('employee') || searchParams.get('employeeId');
+              if (urlEmp) {
+                setSelectedFilters(prev => {
+                  if (prev.employees.length === 1 && prev.employees[0] === urlEmp) return prev;
+                  return { ...prev, employees: [urlEmp] };
+                });
+              }
+            }, [searchParams]);
 
   // Unified fetcher for both live and historical screenshots
   const fetchScreenshots = useCallback(async (pageNum = 0, isPolling = false) => {
@@ -2177,6 +2192,13 @@ const ScreenshotCard = memo(({ id, employeeId, employee, timestamp, image, isBlu
                 ...prev,
                 [type]: selectedIds
               }));
+  };
+
+  const handleClearFilter = (key) => {
+    setSelectedFilters(prev => ({
+      ...prev,
+      [key]: []
+    }));
   };
 
   const getEmptyMessage = (type) => {
